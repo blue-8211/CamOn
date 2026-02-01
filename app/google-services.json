@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "977538147900",
+    "project_id": "camon-2f4bf",
+    "storage_bucket": "camon-2f4bf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:977538147900:android:f59d8096aa8676085f4539",
+        "android_client_info": {
+          "package_name": "com.company.camon"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "977538147900-645m241mqaahpt7vana8bea3mt81vl6v.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.company.camon",
+            "certificate_hash": "63928ba864a339b7afec0bafafa6c77b5c1ee338"
+          }
+        },
+        {
+          "client_id": "977538147900-vj60a0509ot1u80l8rgplk64h0dt8kmj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAmbWkqBd0tey_FhkJ53688aoPJUFhWj_0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "977538147900-vj60a0509ot1u80l8rgplk64h0dt8kmj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

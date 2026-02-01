@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,6 +42,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
     var campLogs by remember { mutableStateOf(loadCampLogs(context)) } // 전체 캠핑 로그 데이터
     val scope = rememberCoroutineScope()
 
+    // 💡 [추가] 달력 스크롤 제어를 위한 상태
+    val calendarListState = rememberLazyListState()
+
     // --- 2. 장비 관련 상태 ---
     val allGroups = remember { loadGearGroups(context) } // 저장된 모든 장비 그룹
     val allGear = remember { loadGearList(context) }     // 저장된 모든 개별 장비 리스트
@@ -68,13 +73,94 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-        Text("안녕하세요, 이종화님! 🏕️", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        // 상단 인사말과 '오늘' 버튼을 한 줄에 배치
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ){
+            Text("안녕하세요, 이종화님! 🏕️", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+
+            // 💡 [추가] 오늘 날짜로 즉시 이동하는 버튼
+            Button(
+                onClick = {
+                    selectedDate = LocalDate.now()
+                    // 💡 [추가] 오늘 버튼 클릭 시 달력을 맨 앞(오늘)으로 스크롤
+                    scope.launch {
+                        calendarListState.animateScrollToItem(0)
+                    }
+                },
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            ) {
+                Text("오늘", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         Spacer(modifier = Modifier.height(20.dp))
 
         // 주간 달력 UI
-        WeeklyCalendar(selectedDate, campLogs.keys) { selectedDate = it }
-        Spacer(modifier = Modifier.height(30.dp))
+        // 💡 [수정] WeeklyCalendar에 listState를 전달합니다.
+        WeeklyCalendar(
+            selectedDate = selectedDate,
+            hasLogDates = campLogs.keys,
+            listState = calendarListState // state 전달
+        ) {
+            selectedDate = it
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 기온 정보
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Thermostat,
+                        contentDescription = null,
+                        tint = Color(0xFFFF5722), // 주황색 계열
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("기온", fontSize = 12.sp, color = Color.Gray)
+                        Text("--°C", fontWeight = FontWeight.Bold, fontSize = 16.sp) // 추후 데이터 연결
+                    }
+                }
 
+                // 구분선
+                Box(modifier = Modifier.width(1.dp).height(30.dp).background(MaterialTheme.colorScheme.outlineVariant))
+
+                // 풍속 정보
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Air,
+                        contentDescription = null,
+                        tint = Color(0xFF2196F3), // 파란색 계열
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("풍속", fontSize = 12.sp, color = Color.Gray)
+                        Text("--m/s", fontWeight = FontWeight.Bold, fontSize = 16.sp) // 추후 데이터 연결
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
         Text("${selectedDate}의 캠핑 기록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
         // --- 입력 카드 영역 ---
@@ -265,12 +351,16 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
 fun WeeklyCalendar(
     selectedDate: LocalDate,
     hasLogDates: Set<String>,
+    listState: LazyListState,
     onDateSelected: (LocalDate) -> Unit
 ) {
-    // 현재 날짜 기준으로 전후 7일씩 보여주는 리스트 생성
-    val days = remember { (-7..7).map { LocalDate.now().plusDays(it.toLong()) } }
+    // 💡 리스트 생성 시 오늘이 항상 0번째 인덱스가 되도록 조정 (선택 사항)
+    // 현재 이종화님 소스는 (-7..7)이라 오늘이 중간에 있습니다.
+    // 오늘이 맨 처음에 오게 하려면 (0..14)로 바꾸는 것이 스크롤 이동 시 가장 깔끔합니다.
+    val days = remember { (0..14).map { LocalDate.now().plusDays(it.toLong()) } }
 
     LazyRow(
+        state = listState, // 💡 state 연결
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {

@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.company.camon.data.network.NaverSearchApi
+import com.company.camon.data.network.WeatherApiService
 import com.company.camon.ui.gear.GearMainScreen
 import com.company.camon.ui.home.MainHomeScreen
 import com.company.camon.ui.log.CampingLogScreen // 상세 화면 import 확인!
@@ -61,6 +62,15 @@ fun MainNavigationScreen() {
             .create(NaverSearchApi::class.java)
     }
 
+    // 💡 날씨 API 객체 (remember를 사용하여 성능 최적화)
+    val weatherApi = remember {
+        Retrofit.Builder()
+            .baseUrl("https://api.openweathermap.org/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(WeatherApiService::class.java)
+    }
+
     Scaffold(
         bottomBar = {
             // 💡 상세 화면을 보고 있을 때는 바텀바를 숨겨서 몰입도를 높입니다.
@@ -98,9 +108,10 @@ fun MainNavigationScreen() {
                     is Screen.Home -> MainHomeScreen(
                         context = context,
                         onNavigateToLog = { date ->
-                            // 홈 화면에서 일정 클릭 시 상세 화면 날짜 상태를 업데이트!
                             detailLogDate = date
-                        }
+                        },
+                        // 💡 [수정] 드디어 weatherApi를 전달합니다!
+                        weatherApi = weatherApi
                     )
                     is Screen.Gear -> GearMainScreen(context = context, naverApi = naverApi)
                     is Screen.Calendar -> {

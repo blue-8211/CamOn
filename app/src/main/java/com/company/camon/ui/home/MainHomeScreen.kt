@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import com.company.camon.data.model.CampLog
 import com.company.camon.data.network.SearchResultItem
+import com.company.camon.data.network.WeatherApiService
 import com.company.camon.data.network.naverApi
 import com.company.camon.ui.components.CampingMapView
 import com.company.camon.util.*
@@ -34,7 +35,7 @@ import java.time.format.TextStyle
 import java.util.*
 
 @Composable
-fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
+fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherApi: WeatherApiService) {
     // --- 1. 상태 관리 변수들 ---
     var selectedDate by remember { mutableStateOf(LocalDate.now()) } // 선택된 날짜
     var locationInput by remember { mutableStateOf("") } // 캠핑장 검색어 입력값
@@ -79,6 +80,59 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
             val index = calendarListState.firstVisibleItemIndex
             // -180부터 시작하는 리스트이므로 인덱스를 날짜로 변환
             LocalDate.now().plusDays((index - 180).toLong())
+        }
+    }
+
+    // MainHomeScreen 내부 LaunchedEffect 등에서 사용
+    val coords = GeoConverter.katechToWgs84(
+        selectedSearchItem?.mapx ?: "",
+        selectedSearchItem?.mapy ?: ""
+    )
+
+    if (coords != null) {
+        val latitude = coords.first   // 위도 (37.xxxx)
+        val longitude = coords.second // 경도 (126.xxxx)
+
+        // 💡 이제 이 위경도를 가지고 날씨 API를 호출하면 됩니다!
+    }
+
+    var temperature by remember { mutableStateOf("--") }
+    var windSpeed by remember { mutableStateOf("--") }
+
+    // 날짜나 선택된 캠핑장이 바뀔 때마다 날씨 호출
+    LaunchedEffect(selectedDate, selectedSearchItem) {
+        // 💡 [추가] 앱 실행 시 달력을 오늘 날짜(180번 인덱스)로 즉시 이동
+        // 애니메이션 없이 즉시 이동하여 사용자에게 위화감을 주지 않음
+        calendarListState.scrollToItem(180)
+        if (selectedSearchItem != null) {
+            val rawX = selectedSearchItem?.mapx?.toDoubleOrNull() ?: 0.0
+            val rawY = selectedSearchItem?.mapy?.toDoubleOrNull() ?: 0.0
+
+            // 💡 네이버 좌표계 판별 및 변환 로직
+            val (latitude, longitude) = if (rawX > 10000000) {
+                // 1. 큰 숫자로 넘어올 경우 (위경도 * 10,000,000 형식)
+                Pair(rawY / 10000000.0, rawX / 10000000.0)
+            } else {
+                // 2. 기존 KATECH(6~7자리)일 경우 GeoConverter 사용
+                val coords = GeoConverter.katechToWgs84(selectedSearchItem?.mapx ?: "", selectedSearchItem?.mapy ?: "")
+                if (coords != null) Pair(coords.first, coords.second) else Pair(0.0, 0.0)
+            }
+
+            if (latitude != 0.0 && longitude != 0.0) {
+                println("CamonDebug: 최종 좌표 확정! Lat=$latitude, Lon=$longitude")
+                try {
+                    val response = weatherApi.getCurrentWeather(
+                        lat = latitude,
+                        lon = longitude,
+                        apiKey = "27146ed0cf8609bb6f532dcd87488c8c" // 여기에 이종화님 키 입력!
+                    )
+                    temperature = response.main.temp.toInt().toString()
+                    windSpeed = response.wind.speed.toString()
+                } catch (e: Exception) {
+                    temperature = "ERR"
+                    windSpeed = "ERR"
+                }
+            }
         }
     }
 
@@ -154,7 +208,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text("기온", fontSize = 12.sp, color = Color.Gray)
-                        Text("--°C", fontWeight = FontWeight.Bold, fontSize = 16.sp) // 추후 데이터 연결
+                        // 💡 [수정] 실제 변수 연결
+                        Text("${temperature}°C", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
                 }
 
@@ -172,7 +227,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text("풍속", fontSize = 12.sp, color = Color.Gray)
-                        Text("--m/s", fontWeight = FontWeight.Bold, fontSize = 16.sp) // 추후 데이터 연결
+                        // 💡 [수정] 실제 변수 연결
+                        Text("${windSpeed}m/s", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
                 }
             }

@@ -72,6 +72,16 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
         )
     }
 
+    // 💡 [추가] 현재 달력에서 보고 있는 날짜의 '월'을 계산
+    // 스크롤이 멈춘 지점의 인덱스를 기반으로 해당 날짜의 연/월을 가져옵니다.
+    val currentViewDate = remember {
+        derivedStateOf {
+            val index = calendarListState.firstVisibleItemIndex
+            // -180부터 시작하는 리스트이므로 인덱스를 날짜로 변환
+            LocalDate.now().plusDays((index - 180).toLong())
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         // 상단 인사말과 '오늘' 버튼을 한 줄에 배치
         Row(
@@ -79,7 +89,13 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ){
-            Text("안녕하세요, 이종화님! 🏕️", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                text = "${currentViewDate.value.year}년 ${currentViewDate.value.monthValue}월",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Text("안녕하세요, 이종화님! 🏕️", style = MaterialTheme.typography.bodyMedium)
 
             // 💡 [추가] 오늘 날짜로 즉시 이동하는 버튼
             Button(
@@ -87,7 +103,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit) {
                     selectedDate = LocalDate.now()
                     // 💡 [추가] 오늘 버튼 클릭 시 달력을 맨 앞(오늘)으로 스크롤
                     scope.launch {
-                        calendarListState.animateScrollToItem(0)
+                        // 💡 [수정] 0번이 아니라 오늘 날짜인 180번 인덱스로 이동
+                        // 약간의 여유를 위해 179번 정도로 보내면 오늘 날짜가 더 잘 보입니다.
+                        calendarListState.animateScrollToItem(180)
                     }
                 },
                 modifier = Modifier.height(36.dp),
@@ -355,9 +373,9 @@ fun WeeklyCalendar(
     onDateSelected: (LocalDate) -> Unit
 ) {
     // 💡 리스트 생성 시 오늘이 항상 0번째 인덱스가 되도록 조정 (선택 사항)
-    // 현재 이종화님 소스는 (-7..7)이라 오늘이 중간에 있습니다.
-    // 오늘이 맨 처음에 오게 하려면 (0..14)로 바꾸는 것이 스크롤 이동 시 가장 깔끔합니다.
-    val days = remember { (0..14).map { LocalDate.now().plusDays(it.toLong()) } }
+    // 💡 [수정] 오늘 기준 과거 180일 ~ 미래 180일 (약 1년 범위) 생성
+    // 인덱스 180이 '오늘'이 됩니다.
+    val days = remember { (-180..180).map { LocalDate.now().plusDays(it.toLong()) } }
 
     LazyRow(
         state = listState, // 💡 state 연결

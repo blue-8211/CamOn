@@ -96,14 +96,26 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         // 💡 이제 이 위경도를 가지고 날씨 API를 호출하면 됩니다!
     }
 
-    var temperature by remember { mutableStateOf("--") }
-    var windSpeed by remember { mutableStateOf("--") }
+    // 상태 변수 확장
+    var tempMax by remember { mutableStateOf("-") }
+    var tempMin by remember { mutableStateOf("-") }
+    var windMax by remember { mutableStateOf("-") }
+    var windMin by remember { mutableStateOf("-") }
 
+    // [수정] 앱 실행 시 딱 한 번만 오늘 날짜로 이동
+    LaunchedEffect(Unit) {
+        calendarListState.scrollToItem(180)
+    }
     // 날짜나 선택된 캠핑장이 바뀔 때마다 날씨 호출
     LaunchedEffect(selectedDate, selectedSearchItem) {
-        // 💡 [추가] 앱 실행 시 달력을 오늘 날짜(180번 인덱스)로 즉시 이동
-        // 애니메이션 없이 즉시 이동하여 사용자에게 위화감을 주지 않음
-        calendarListState.scrollToItem(180)
+        val today = LocalDate.now()
+
+        // 1. 과거 날짜 처리
+        if (selectedDate.isBefore(today)) {
+            tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
+            return@LaunchedEffect
+        }
+
         if (selectedSearchItem != null) {
             val rawX = selectedSearchItem?.mapx?.toDoubleOrNull() ?: 0.0
             val rawY = selectedSearchItem?.mapy?.toDoubleOrNull() ?: 0.0
@@ -119,18 +131,29 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             }
 
             if (latitude != 0.0 && longitude != 0.0) {
-                println("CamonDebug: 최종 좌표 확정! Lat=$latitude, Lon=$longitude")
+                //println("CamonDebug: 최종 좌표 확정! Lat=$latitude, Lon=$longitude")
                 try {
-                    val response = weatherApi.getCurrentWeather(
+                    // 2. 오늘 혹은 미래 날짜는 Forecast API 사용 (최고/최저를 위해)
+                    val response = weatherApi.getForecast(
                         lat = latitude,
                         lon = longitude,
                         apiKey = "27146ed0cf8609bb6f532dcd87488c8c" // 여기에 이종화님 키 입력!
                     )
-                    temperature = response.main.temp.toInt().toString()
-                    windSpeed = response.wind.speed.toString()
+
+                    // 3. 선택된 날짜의 데이터만 필터링
+                    val dailyData = response.list.filter { it.dt_txt.startsWith(selectedDate.toString()) }
+
+                    if (dailyData.isNotEmpty()) {
+                        tempMax = dailyData.maxOf { it.main.temp_max }.toInt().toString()
+                        tempMin = dailyData.minOf { it.main.temp_min }.toInt().toString()
+                        windMax = dailyData.maxOf { it.wind.speed }.toString()
+                        windMin = dailyData.minOf { it.wind.speed }.toString()
+                    } else {
+                        // 예보 범위를 벗어난 아주 먼 미래
+                        tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
+                    }
                 } catch (e: Exception) {
-                    temperature = "ERR"
-                    windSpeed = "ERR"
+                    tempMax = "ERR"; tempMin = "ERR"
                 }
             }
         }
@@ -207,9 +230,13 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text("기온", fontSize = 12.sp, color = Color.Gray)
-                        // 💡 [수정] 실제 변수 연결
-                        Text("${temperature}°C", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("기온 (최고/최저)", fontSize = 12.sp, color = Color.Gray)
+                        Text(
+                            text = if (tempMax == "-") "-" else "${tempMax}° / ${tempMin}°",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = if (tempMax != "-") Color(0xFFFF5252) else Color.Black // 최고기온 빨간색 포인트
+                        )
                     }
                 }
 
@@ -226,9 +253,13 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text("풍속", fontSize = 12.sp, color = Color.Gray)
-                        // 💡 [수정] 실제 변수 연결
-                        Text("${windSpeed}m/s", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("풍속 (최대)", fontSize = 12.sp, color = Color.Gray)
+                        Text(
+                            text = if (windMax == "-") "-" else "${windMax} m/s",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = if (windMax != "-" && windMax.toDouble() > 7.0) Color.Red else Color.Black // 강풍 주의 표시
+                        )
                     }
                 }
             }

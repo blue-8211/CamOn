@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -88,15 +90,63 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
         } else {
             Column(modifier = Modifier.padding(padding).padding(16.dp)) {
 
-                // --- [2. 체크리스트 헤더 및 진행률] ---
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("짐 챙기기 체크리스트", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text("${checkedGearIds.size} / ${matchingGear.size}", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                // --- [2. 체크리스트 헤더 및 진행률 개선] ---
+                val totalGear = matchingGear.size
+                val packedGear = checkedGearIds.size
+                val progress = if (totalGear > 0) packedGear.toFloat() / totalGear else 0f
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom // 텍스트와 숫자의 밑선을 맞춤
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (progress == 1f) Icons.Default.CheckCircle else Icons.Default.Inventory2,
+                                contentDescription = null,
+                                tint = if (progress == 1f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "준비 현황",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // 💡 숫자 표기 (강조)
+                        Text(
+                            text = "$packedGear / $totalGear",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 💡 시각적 진행률 바 추가
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .clip(CircleShape),
+                        color = if (progress == 1f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+
+                    // 퍼센트 텍스트 (우측 하단 소형)
+                    Text(
+                        text = "${(progress * 100).toInt()}% 완료",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray,
+                        modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // --- [3. 메인 체크리스트 (삭제 기능 포함)] ---
                 Card(
@@ -105,17 +155,26 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                 ) {
                     if (matchingGear.isEmpty()) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("등록된 장비가 없습니다.\n우측 상단 + 버튼으로 추가하세요.", fontSize = 13.sp, color = Color.Gray)
+                            Text("등록된 장비가 없습니다.", fontSize = 13.sp, color = Color.Gray)
                         }
                     } else {
+                        // 💡 체크 안 된 장비(false)가 위로, 체크 된 장비(true)가 아래로 오도록 정렬
+                        val sortedGear = matchingGear.sortedBy { gear ->
+                            checkedGearIds.contains(gear.id)
+                        }
+
                         LazyColumn {
-                            items(matchingGear) { gear ->
+                            // 💡 matchingGear 대신 sortedGear를 사용합니다.
+                            items(sortedGear, key = { it.id }) { gear ->
                                 val isChecked = checkedGearIds.contains(gear.id)
+
                                 ListItem(
                                     headlineContent = {
                                         Text(
                                             gear.name,
                                             color = if (isChecked) Color.Gray else Color.Unspecified,
+                                            // 💡 체크되면 취소선(LineThrough) 효과를 주면 더 확실합니다.
+                                            textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
                                             fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
                                         )
                                     },

@@ -106,7 +106,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     LaunchedEffect(Unit) {
         calendarListState.scrollToItem(180)
     }
-    // 날짜나 선택된 캠핑장이 바뀔 때마다 날씨 호출
+    // --- [수정된 날씨 호출 로직] ---
     LaunchedEffect(selectedDate, selectedSearchItem) {
         val today = LocalDate.now()
 
@@ -116,31 +116,33 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             return@LaunchedEffect
         }
 
-        if (selectedSearchItem != null) {
-            val rawX = selectedSearchItem?.mapx?.toDoubleOrNull() ?: 0.0
-            val rawY = selectedSearchItem?.mapy?.toDoubleOrNull() ?: 0.0
+        // 💡 핵심 수정: 검색된 아이템이 없더라도, 저장된 로그가 있다면 해당 좌표를 사용함
+        val currentLog = campLogs[selectedDate.toString()]
 
-            // 💡 네이버 좌표계 판별 및 변환 로직
+        // 좌표 결정 우선순위: 1. 방금 검색한 아이템 -> 2. 이미 저장된 로그
+        val targetMapX = selectedSearchItem?.mapx ?: currentLog?.mapx
+        val targetMapY = selectedSearchItem?.mapy ?: currentLog?.mapy
+
+        if (targetMapX != null && targetMapY != null) {
+            val rawX = targetMapX.toDoubleOrNull() ?: 0.0
+            val rawY = targetMapY.toDoubleOrNull() ?: 0.0
+
+            // 네이버 좌표계 판별 및 변환 로직
             val (latitude, longitude) = if (rawX > 10000000) {
-                // 1. 큰 숫자로 넘어올 경우 (위경도 * 10,000,000 형식)
                 Pair(rawY / 10000000.0, rawX / 10000000.0)
             } else {
-                // 2. 기존 KATECH(6~7자리)일 경우 GeoConverter 사용
-                val coords = GeoConverter.katechToWgs84(selectedSearchItem?.mapx ?: "", selectedSearchItem?.mapy ?: "")
+                val coords = GeoConverter.katechToWgs84(targetMapX, targetMapY)
                 if (coords != null) Pair(coords.first, coords.second) else Pair(0.0, 0.0)
             }
 
             if (latitude != 0.0 && longitude != 0.0) {
-                //println("CamonDebug: 최종 좌표 확정! Lat=$latitude, Lon=$longitude")
                 try {
-                    // 2. 오늘 혹은 미래 날짜는 Forecast API 사용 (최고/최저를 위해)
                     val response = weatherApi.getForecast(
                         lat = latitude,
                         lon = longitude,
-                        apiKey = "27146ed0cf8609bb6f532dcd87488c8c" // 여기에 이종화님 키 입력!
+                        apiKey = "27146ed0cf8609bb6f532dcd87488c8c"
                     )
 
-                    // 3. 선택된 날짜의 데이터만 필터링
                     val dailyData = response.list.filter { it.dt_txt.startsWith(selectedDate.toString()) }
 
                     if (dailyData.isNotEmpty()) {
@@ -149,13 +151,15 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         windMax = dailyData.maxOf { it.wind.speed }.toString()
                         windMin = dailyData.minOf { it.wind.speed }.toString()
                     } else {
-                        // 예보 범위를 벗어난 아주 먼 미래
                         tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
                     }
                 } catch (e: Exception) {
                     tempMax = "ERR"; tempMin = "ERR"
                 }
             }
+        } else {
+            // 좌표 정보가 아예 없는 경우 (기록도 없고 검색도 안 함)
+            tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
         }
     }
 
@@ -266,113 +270,148 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        Text("${selectedDate}의 캠핑 기록", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-        // --- 입력 카드 영역 ---
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // 캠핑장 검색 필드
-                OutlinedTextField(
-                    value = locationInput,
-                    onValueChange = {
-                        locationInput = it
-                        if (it.length >= 2) {
-                            scope.launch {
-                                try {
-                                    val response = naverApi.searchCamping("8mtFAfTR89iqD77LO6us", "Wn0CK0Ie0Q", it)
-                                    searchResults = response.items
-                                } catch (e: Exception) { searchResults = emptyList() }
-                            }
-                        } else { searchResults = emptyList() }
-                    },
-                    label = { Text("캠핑장 검색") },
-                    modifier = Modifier.fillMaxWidth()
+        val currentLog = campLogs[selectedDate.toString()]
+
+        if (currentLog == null) {
+            Text(
+                "${selectedDate}의 캠핑 기록",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            // --- 입력 카드 영역 ---
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
                 )
-
-                // 검색 결과 드롭다운 표시
-                if (searchResults.isNotEmpty()) {
-                    Card(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        searchResults.forEach { item ->
-                            val cleanTitle = item.title.replace("<b>", "").replace("</b>", "")
-                            DropdownMenuItem(
-                                text = { Text("$cleanTitle (${item.address})", fontSize = 12.sp) },
-                                onClick = {
-                                    locationInput = cleanTitle
-                                    selectedSearchItem = item
-                                    searchResults = emptyList()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // 캠핑장 검색 필드
+                    OutlinedTextField(
+                        value = locationInput,
+                        onValueChange = {
+                            locationInput = it
+                            if (it.length >= 2) {
+                                scope.launch {
+                                    try {
+                                        val response = naverApi.searchCamping(
+                                            "8mtFAfTR89iqD77LO6us",
+                                            "Wn0CK0Ie0Q",
+                                            it
+                                        )
+                                        searchResults = response.items
+                                    } catch (e: Exception) {
+                                        searchResults = emptyList()
+                                    }
                                 }
-                            )
+                            } else {
+                                searchResults = emptyList()
+                            }
+                        },
+                        label = { Text("캠핑장 검색") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 검색 결과 드롭다운 표시
+                    if (searchResults.isNotEmpty()) {
+                        Card(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            searchResults.forEach { item ->
+                                val cleanTitle = item.title.replace("<b>", "").replace("</b>", "")
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "$cleanTitle (${item.address})",
+                                            fontSize = 12.sp
+                                        )
+                                    },
+                                    onClick = {
+                                        locationInput = cleanTitle
+                                        selectedSearchItem = item
+                                        searchResults = emptyList()
+                                    }
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                // 💡 [장비 선택 섹션] 그룹추가 & 개별추가 버튼
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🎒 장비 세팅: ${selectedGearIds.size}개", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // 그룹으로 불러오기 버튼
-                    TextButton(onClick = { showGroupPicker = true }) {
-                        Text("그룹 추가", fontSize = 12.sp)
-                    }
-                    // 개별로 하나씩 추가 버튼
-                    TextButton(onClick = { showIndividualPicker = true }) {
-                        Text("개별 추가", fontSize = 12.sp)
-                    }
-                }
-
-                // 저장 및 공개 설정 로우
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                    // 💡 [장비 선택 섹션] 그룹추가 & 개별추가 버튼
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (isPublic) "🌍 공개" else "🔒 비공개", fontSize = 14.sp)
-                        Switch(checked = isPublic, onCheckedChange = { isPublic = it })
-                    }
-                    Button(onClick = {
-                        if (locationInput.isNotBlank()) {
-                            val newLog = CampLog(
-                                date = selectedDate.toString(),
-                                location = locationInput,
-                                address = selectedSearchItem?.address ?: "",
-                                mapx = selectedSearchItem?.mapx ?: "",
-                                mapy = selectedSearchItem?.mapy ?: "",
-                                isPublic = isPublic,
-                                gearIds = selectedGearIds.toList() // 선택된 모든 장비 ID 저장
-                            )
-                            val currentLogs = loadCampLogs(context).toMutableMap()
-                            currentLogs[selectedDate.toString()] = newLog
-                            saveCampLogs(context, currentLogs)
+                        Text(
+                            "🎒 장비 세팅: ${selectedGearIds.size}개",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
 
-                            campLogs = currentLogs // UI 즉시 갱신
-                            locationInput = ""
-                            selectedGearIds = emptySet()
-                            Toast.makeText(context, "기록 저장 완료! ⛺", Toast.LENGTH_SHORT).show()
+                        // 그룹으로 불러오기 버튼
+                        TextButton(onClick = { showGroupPicker = true }) {
+                            Text("그룹 추가", fontSize = 12.sp)
                         }
-                    }) { Text("저장") }
+                        // 개별로 하나씩 추가 버튼
+                        TextButton(onClick = { showIndividualPicker = true }) {
+                            Text("개별 추가", fontSize = 12.sp)
+                        }
+                    }
+
+                    // 저장 및 공개 설정 로우
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (isPublic) "🌍 공개" else "🔒 비공개", fontSize = 14.sp)
+                            Switch(checked = isPublic, onCheckedChange = { isPublic = it })
+                        }
+                        Button(onClick = {
+                            if (locationInput.isNotBlank()) {
+                                val newLog = CampLog(
+                                    date = selectedDate.toString(),
+                                    location = locationInput,
+                                    address = selectedSearchItem?.address ?: "",
+                                    mapx = selectedSearchItem?.mapx ?: "",
+                                    mapy = selectedSearchItem?.mapy ?: "",
+                                    isPublic = isPublic,
+                                    gearIds = selectedGearIds.toList() // 선택된 모든 장비 ID 저장
+                                )
+                                val currentLogs = loadCampLogs(context).toMutableMap()
+                                currentLogs[selectedDate.toString()] = newLog
+                                saveCampLogs(context, currentLogs)
+
+                                campLogs = currentLogs // UI 즉시 갱신
+                                locationInput = ""
+                                selectedGearIds = emptySet()
+                                Toast.makeText(context, "기록 저장 완료! ⛺", Toast.LENGTH_SHORT).show()
+                            }
+                        }) { Text("저장") }
+                    }
                 }
             }
-        }
-
-        // --- 하단: 저장된 일정 표시 카드 ---
-        campLogs[selectedDate.toString()]?.let { log ->
-            Spacer(modifier = Modifier.height(20.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { onNavigateToLog(log.date) },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                ListItem(
-                    headlineContent = { Text("📍 ${log.location}", fontWeight = FontWeight.Bold) },
-                    supportingContent = { Text("가져간 장비: ${log.gearIds.size}개 (체크리스트 보기)") },
-                    trailingContent = { Icon(Icons.Default.KeyboardArrowRight, null) }
-                )
+        } else {
+            // --- 하단: 저장된 일정 표시 카드 ---
+            campLogs[selectedDate.toString()]?.let { log ->
+                Spacer(modifier = Modifier.height(20.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { onNavigateToLog(log.date) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                "📍 ${log.location}",
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        supportingContent = { Text("가져간 장비: ${log.gearIds.size}개 (체크리스트 보기)") },
+                        trailingContent = { Icon(Icons.Default.KeyboardArrowRight, null) }
+                    )
+                }
             }
         }
     }

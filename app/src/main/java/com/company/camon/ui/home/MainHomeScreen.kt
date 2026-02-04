@@ -28,6 +28,8 @@ import com.company.camon.data.model.CampLog
 import com.company.camon.data.network.SearchResultItem
 import com.company.camon.data.network.WeatherApiService
 import com.company.camon.data.network.naverApi
+import com.company.camon.ui.component.GearGroupPicker
+import com.company.camon.ui.component.IndividualGearPicker
 import com.company.camon.ui.components.CampingMapView
 import com.company.camon.util.*
 import kotlinx.coroutines.launch
@@ -583,77 +585,30 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
 
 
-    // --- [다이얼로그] 1. 장비 그룹 선택 ---
+    // 1️⃣ 그룹 선택 창 (메인 화면용)
     if (showGroupPicker) {
-        AlertDialog(
-            onDismissRequest = { showGroupPicker = false },
-            title = { Text("장비 그룹 불러오기") },
-            text = {
-                LazyColumn {
-                    items(allGroups) { group ->
-                        ListItem(
-                            headlineContent = { Text(group.name) },
-                            supportingContent = { Text("장비 ${group.gearIds.size}개 포함") },
-                            modifier = Modifier.clickable {
-                                // 기존 리스트에 그룹 내 ID들을 합침 (중복 자동 제거)
-                                selectedGearIds = selectedGearIds + group.gearIds.toSet()
-                                showGroupPicker = false
-                            }
-                        )
-                    }
-                }
+        GearGroupPicker(
+            allGroups = allGroups,
+            onGroupSelected = { group ->
+                // 메인에서는 파일 저장이 아니라, 현재 입력 중인 변수(selectedGearIds)에 합쳐줍니다.
+                selectedGearIds = selectedGearIds + group.gearIds.toSet()
+                showGroupPicker = false // 그룹은 선택 후 보통 닫음
             },
-            confirmButton = { TextButton(onClick = { showGroupPicker = false }) { Text("취소") } }
+            onDismiss = { showGroupPicker = false }
         )
     }
 
-    // --- [다이얼로그] 2. 개별 장비 선택 (검색 기능 포함) ---
+    // 2️⃣ 개별 선택 창 (메인 화면용)
     if (showIndividualPicker) {
-        AlertDialog(
-            onDismissRequest = { showIndividualPicker = false },
-            title = { Text("장비 개별 추가") },
-            text = {
-                Column(modifier = Modifier.heightIn(max = 400.dp)) {
-                    OutlinedTextField(
-                        value = gearSearchQuery,
-                        onValueChange = { gearSearchQuery = it },
-                        placeholder = { Text("장비 이름/브랜드 검색") },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    val filteredGear = allGear.filter {
-                        it.name.contains(gearSearchQuery, ignoreCase = true) ||
-                                it.brand.contains(gearSearchQuery, ignoreCase = true)
-                    }
-
-                    LazyColumn {
-                        items(filteredGear) { gear ->
-                            val isChecked = selectedGearIds.contains(gear.id)
-                            ListItem(
-                                headlineContent = { Text(gear.name) },
-                                supportingContent = { Text(gear.brand) },
-                                leadingContent = {
-                                    Checkbox(checked = isChecked, onCheckedChange = null)
-                                },
-                                modifier = Modifier.clickable {
-                                    // 토글 로직: 있으면 빼고 없으면 넣기
-                                    selectedGearIds = if (isChecked) selectedGearIds - gear.id
-                                    else selectedGearIds + gear.id
-                                }
-                            )
-                        }
-                    }
-                }
+        IndividualGearPicker(
+            allGear = allGear,
+            alreadyAddedIds = selectedGearIds.toList(), // 현재까지 선택된 ID들 전달
+            onGearSelected = { gear ->
+                // 개별 장비를 선택할 때마다 세트에 추가
+                selectedGearIds = selectedGearIds + gear.id
+                Toast.makeText(context, "${gear.name} 선택됨", Toast.LENGTH_SHORT).show()
             },
-            confirmButton = {
-                Button(onClick = {
-                    showIndividualPicker = false
-                    gearSearchQuery = "" // 다이얼로그 닫을 때 검색어 초기화
-                }) { Text("완료") }
-            }
+            onDismiss = { showIndividualPicker = false }
         )
     }
 }

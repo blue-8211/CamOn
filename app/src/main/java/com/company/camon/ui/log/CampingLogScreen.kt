@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.company.camon.ui.component.GearGroupPicker
+import com.company.camon.ui.component.IndividualGearPicker
 import com.company.camon.util.loadCampLogs
 import com.company.camon.util.loadGearList
 import com.company.camon.util.saveCampLogs
@@ -198,187 +200,51 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
         }
     }
 
-    // --- [5. 추가 장비 선택 다이얼로그] ---
-    if (showIndividualPicker) {
-        AlertDialog(
-            onDismissRequest = {
-                showIndividualPicker = false
-                gearSearchQuery = "" // 닫힐 때 검색어 초기화
-            },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("장비 개별 추가", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    // 💡 완료 버튼 대신 우측 상단 X 아이콘
-                    IconButton(onClick = {
-                        showIndividualPicker = false
-                        gearSearchQuery = ""
-                    }) {
-                        Icon(Icons.Default.Close, contentDescription = "닫기")
-                    }
+    // 1️⃣ 공통 그룹 선택 창 호출
+    if (showGroupPicker) {
+        GearGroupPicker(
+            allGroups = allGroups,
+            onGroupSelected = { group ->
+                campLog?.let { log ->
+                    val newGearIds = (log.gearIds.toSet() + group.gearIds.toSet()).toList()
+                    // 즉시 저장 로직
+                    val updatedLog = log.copy(gearIds = newGearIds)
+                    val allLogs = loadCampLogs(context).toMutableMap()
+                    allLogs[date] = updatedLog
+                    saveCampLogs(context, allLogs)
+
+                    campLog = updatedLog // UI 갱신
+                    showGroupPicker = false // 그룹 추가 후 닫기
+                    Toast.makeText(context, "${group.name} 그룹이 추가되었습니다!", Toast.LENGTH_SHORT).show()
                 }
             },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // 1️⃣ 검색창 디자인 개선
-                    OutlinedTextField(
-                        value = gearSearchQuery,
-                        onValueChange = { gearSearchQuery = it },
-                        placeholder = { Text("어떤 장비를 찾으시나요?", fontSize = 14.sp) },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        )
-                    )
-
-                    // 2️⃣ 검색 결과 리스트 (카드 스타일)
-                    val availableGear = allGear.filter { gear ->
-                        val matchesSearch = gear.name.contains(gearSearchQuery, ignoreCase = true)
-                        val isAlreadyAdded = campLog?.gearIds?.contains(gear.id) ?: false
-                        matchesSearch && !isAlreadyAdded
-                    }
-
-                    if (availableGear.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().height(150.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("찾으시는 장비가 없어요 😅", color = Color.Gray, fontSize = 14.sp)
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(availableGear) { gear ->
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        campLog?.let { log ->
-                                            val newGearIds = log.gearIds + gear.id
-                                            val updatedLog = log.copy(gearIds = newGearIds)
-                                            val allLogs = loadCampLogs(context).toMutableMap()
-                                            allLogs[date] = updatedLog
-                                            saveCampLogs(context, allLogs)
-                                            campLog = updatedLog
-                                            // 💡 추가 팁: 토스트 메시지로 추가 알림 주기
-                                            Toast.makeText(context, "${gear.name} 추가됨!", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.AddCircleOutline,
-                                            null,
-                                            tint = Color.Gray,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text(gear.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                                            if (gear.brand.isNotEmpty()) {
-                                                Text(gear.brand, fontSize = 12.sp, color = Color.Gray)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {},
-            shape = RoundedCornerShape(24.dp)
+            onDismiss = { showGroupPicker = false }
         )
     }
 
-    // --- [다이얼로그: 장비 그룹 불러오기] ---
-    if (showGroupPicker) {
-        AlertDialog(
-            onDismissRequest = { showGroupPicker = false },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("장비 그룹 추가", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    // 💡 개별 추가와 동일하게 상단 X 버튼 배치
-                    IconButton(onClick = { showGroupPicker = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "닫기")
-                    }
+// 2️⃣ 공통 개별 장비 선택 창 호출
+    if (showIndividualPicker) {
+        IndividualGearPicker(
+            allGear = allGear,
+            alreadyAddedIds = campLog?.gearIds ?: emptyList(),
+            onGearSelected = { gear ->
+                campLog?.let { log ->
+                    val newGearIds = log.gearIds + gear.id
+                    // 즉시 저장 로직
+                    val updatedLog = log.copy(gearIds = newGearIds)
+                    val allLogs = loadCampLogs(context).toMutableMap()
+                    allLogs[date] = updatedLog
+                    saveCampLogs(context, allLogs)
+
+                    campLog = updatedLog // UI 갱신
+                    // 💡 개별 추가는 창을 닫지 않고 연속 추가 가능하게 유지!
+                    Toast.makeText(context, "${gear.name} 추가됨", Toast.LENGTH_SHORT).show()
                 }
             },
-            text = {
-                // 💡 세로 길이를 적절히 조절하고 스크롤 가능하게 설정
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp) // 카드 사이 간격
-                ) {
-                    items(allGroups) { group ->
-                        // 💡 기본 ListItem 대신 커스텀 카드 사용
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                campLog?.let { log ->
-                                    val newGearIds = (log.gearIds.toSet() + group.gearIds.toSet()).toList()
-                                    val updatedLog = log.copy(gearIds = newGearIds)
-                                    val allLogs = loadCampLogs(context).toMutableMap()
-                                    allLogs[date] = updatedLog
-                                    saveCampLogs(context, allLogs)
-                                    campLog = updatedLog
-                                    showGroupPicker = false
-                                    Toast.makeText(context, "${group.name} 추가 완료!", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.GridView,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        text = group.name,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
-                                    )
-                                    Text(
-                                        text = "장비 ${group.gearIds.size}개 포함",
-                                        fontSize = 12.sp,
-                                        color = Color.Gray
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            shape = RoundedCornerShape(24.dp) // 다이얼로그 모서리도 더 둥글게
+            onDismiss = {
+                showIndividualPicker = false
+                gearSearchQuery = "" // 검색어 초기화
+            }
         )
     }
 }

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.company.camon.data.model.GearItem
 import com.company.camon.ui.component.GearGroupPicker
 import com.company.camon.ui.component.IndividualGearPicker
 import com.company.camon.util.loadCampLogs
@@ -159,9 +160,18 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                         }
                     } else {
                         // 💡 체크 안 된 장비(false)가 위로, 체크 된 장비(true)가 아래로 오도록 정렬
-                        val sortedGear = matchingGear.sortedBy { gear ->
-                            checkedGearIds.contains(gear.id)
-                        }
+                        val sortedGear = matchingGear.sortedWith(
+                            compareBy<GearItem> { gear ->
+                                // 1순위: 체크 여부 (체크 안 된 것이 위로)
+                                checkedGearIds.contains(gear.id)
+                            }.thenBy { gear ->
+                                // 2순위: 카테고리명 (ㄱㄴㄷ 순으로 모아서 보여줌)
+                                gear.category
+                            }.thenBy { gear ->
+                                // 3순위: 이름 (같은 카테고리 내에서 이름순)
+                                gear.name
+                            }
+                        )
 
                         LazyColumn {
                             // 💡 matchingGear 대신 sortedGear를 사용합니다.
@@ -170,15 +180,34 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
 
                                 ListItem(
                                     headlineContent = {
-                                        Text(
-                                            gear.name,
-                                            color = if (isChecked) Color.Gray else Color.Unspecified,
-                                            // 💡 체크되면 취소선(LineThrough) 효과를 주면 더 확실합니다.
-                                            textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
-                                            fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            // 💡 카테고리 태그 추가
+                                            Surface(
+                                                color = if (isChecked) Color.LightGray.copy(alpha = 0.3f)
+                                                else MaterialTheme.colorScheme.primaryContainer,
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = gear.category,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isChecked) Color.Gray else MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            // 장비 이름
+                                            Text(
+                                                text = gear.name,
+                                                color = if (isChecked) Color.Gray else Color.Unspecified,
+                                                textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                                                fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
+                                            )
+                                        }
                                     },
-                                    supportingContent = { Text(gear.brand, fontSize = 12.sp) },
+                                    supportingContent = {
+                                        Text(gear.brand, fontSize = 11.sp, modifier = Modifier.padding(start = 42.dp))
+                                    },
                                     leadingContent = {
                                         Checkbox(
                                             checked = isChecked,

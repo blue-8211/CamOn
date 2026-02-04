@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -394,27 +395,193 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 }
             }
         } else {
-            // --- 하단: 저장된 일정 표시 카드 ---
-            campLogs[selectedDate.toString()]?.let { log ->
-                Spacer(modifier = Modifier.height(20.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onNavigateToLog(log.date) },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            // 제목과 수정 버튼을 한 줄에 배치
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${selectedDate}의 캠핑 계획",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // 💡 수정 버튼 추가
+                TextButton(
+                    onClick = {
+                        // 1. 현재 저장된 기록의 내용을 입력 필드 상태값들에 다시 채워넣음
+                        locationInput = currentLog.location
+                        selectedGearIds = currentLog.gearIds.toSet()
+                        isPublic = currentLog.isPublic
+
+                        // 2. 날씨 연동을 위해 검색 아이템 정보도 복구
+                        selectedSearchItem = SearchResultItem(
+                            title = currentLog.location,
+                            address = currentLog.address,
+                            roadAddress = currentLog.address,
+                            mapx = currentLog.mapx,
+                            mapy = currentLog.mapy
+                        )
+
+                        // 3. 핵심: campLogs에서 이 날짜를 잠시 제거하여 '등록 모드(if)'가 화면에 나오게 함
+                        val tempLogs = campLogs.toMutableMap()
+                        tempLogs.remove(selectedDate.toString())
+                        campLogs = tempLogs
+
+                        Toast.makeText(context, "수정 모드입니다. 내용을 고친 후 다시 저장해주세요.", Toast.LENGTH_SHORT).show()
+                    }
                 ) {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                "📍 ${log.location}",
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        supportingContent = { Text("가져간 장비: ${log.gearIds.size}개 (체크리스트 보기)") },
-                        trailingContent = { Icon(Icons.Default.KeyboardArrowRight, null) }
+                    Text("기록 수정", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 데이터 계산 (전체 대비 체크된 비율)
+            val totalGear = currentLog.gearIds.size
+            val packedGear = currentLog.checkedGearIds.size
+            val progress = if (totalGear > 0) packedGear.toFloat() / totalGear else 0f
+            val isComplete = progress == 1f && totalGear > 0
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToLog(currentLog.date) }, // 카드 클릭 시 짐 싸기 화면으로 이동
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    // 완료 여부에 따라 배경색을 다르게 줌 (완료 시 연한 초록)
+                    containerColor = if (isComplete) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "📍 ${currentLog.location}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Icon(
+                            imageVector = if (isComplete) Icons.Default.CheckCircle else Icons.Default.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = if (isComplete) Color(0xFF4CAF50) else Color.Gray
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 💡 진행률 바 (막대 그래프)
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(CircleShape),
+                        color = if (isComplete) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                        trackColor = Color.White.copy(alpha = 0.5f)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 상태 요약 텍스트
+                    Text(
+                        text = if (isComplete) "패킹 완료! 이제 출발하세요 🎉" else "장비 $packedGear / $totalGear 체크됨 (${(progress * 100).toInt()}%)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isComplete) Color(0xFF2E7D32) else Color.DarkGray
                     )
                 }
             }
         }
+        // --- [진행률 카드 바로 아래에 추가] ---
+        currentLog?.let { log ->
+            // 1. 아직 체크 안 된 장비들만 필터링
+            val remainingGear = allGear.filter { gear ->
+                log.gearIds.contains(gear.id) && !log.checkedGearIds.contains(gear.id)
+            }
+
+            if (remainingGear.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "💡 잊으신 건 없나요?",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.Gray
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 최대 4개까지만 미리보기로 보여줌
+                remainingGear.take(4).forEach { gear ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Inventory,
+                                null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.Gray
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(gear.name, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            // 💡 여기서 바로 체크하는 기능 (옵션)
+                            IconButton(
+                                onClick = {
+                                    val updatedChecked = log.checkedGearIds + gear.id
+                                    val newLog = log.copy(checkedGearIds = updatedChecked)
+                                    val log = campLogs.toMutableMap()
+                                    log[selectedDate.toString()] = newLog
+                                    saveCampLogs(context, log)
+                                    campLogs = log
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.RadioButtonUnchecked,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (remainingGear.size > 4) {
+                    Text(
+                        "외 ${remainingGear.size - 4}개의 장비가 더 있어요...",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                    )
+                }
+            } else if (log.gearIds.isNotEmpty()) {
+                // 모든 짐을 다 쌌을 때 나오는 메시지
+                Spacer(modifier = Modifier.height(20.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("🎉 완벽합니다! 모든 장비를 다 챙기셨어요.", fontSize = 14.sp, color = Color(0xFF2E7D32))
+                }
+            }
+        }
+
     }
+
+
 
     // --- [다이얼로그] 1. 장비 그룹 선택 ---
     if (showGroupPicker) {

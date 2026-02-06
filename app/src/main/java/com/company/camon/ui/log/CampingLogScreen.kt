@@ -19,7 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.company.camon.data.model.GearItem
+import com.company.camon.data.db.CamonDatabase // 💡 추가
+import com.company.camon.data.model.UserGear // 💡 GearItem 대신 UserGear
 import com.company.camon.ui.component.GearGroupPicker
 import com.company.camon.ui.component.IndividualGearPicker
 import com.company.camon.util.loadCampLogs
@@ -29,10 +30,13 @@ import com.company.camon.util.saveCampLogs
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
-    // --- [1. 상태 관리 변수] ---
+    // --- [1. 데이터 및 DB 관측] ---
+    val db = remember { CamonDatabase.getDatabase(context) }
+    val gearDao = db.gearDao()
+    // 💡 [수정] Room DB에서 실시간 장비 리스트를 가져옵니다.
+    val allGear by gearDao.getAllUserGears().collectAsState(initial = emptyList())
     // 현재 날짜의 로그 데이터를 불러옵니다.
     var campLog by remember { mutableStateOf(loadCampLogs(context)[date]) }
-    val allGear = remember { loadGearList(context) }
 
     // 장비 추가 다이얼로그 및 검색어 상태
     var showIndividualPicker by remember { mutableStateOf(false) }
@@ -42,24 +46,22 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
     var checkedGearIds by remember { mutableStateOf(campLog?.checkedGearIds?.toSet() ?: emptySet()) }
 
     // 현재 로그의 gearIds에 포함된 장비들만 필터링하여 메인 리스트 구성
-    val matchingGear = allGear.filter { gear -> campLog?.gearIds?.contains(gear.id) == true }
+    // 💡 [수정] matchingGear 타입을 UserGear로 변경하고 ID 매칭 로직 보강
+    val matchingGear = allGear.filter { gear ->
+        campLog?.gearIds?.contains(gear.id.toString()) == true
+    }
 
     // 💡 공통으로 사용할 저장 함수를 내부에서 정의하거나 로직을 합칩니다.
     val toggleGearCheck: (String, Boolean) -> Unit = { gearId, shouldCheck ->
         val newSet = checkedGearIds.toMutableSet()
         if (shouldCheck) newSet.add(gearId) else newSet.remove(gearId)
-
-        // 1. UI 상태 변경
         checkedGearIds = newSet
 
-        // 2. 즉시 파일 저장 로직 추가
         campLog?.let { currentLog ->
             val updatedLog = currentLog.copy(checkedGearIds = newSet.toList())
             val allLogs = loadCampLogs(context).toMutableMap()
             allLogs[date] = updatedLog
             saveCampLogs(context, allLogs)
-
-            // 3. 현재 로그 상태도 동기화 (메인 화면으로 돌아갔을 때 반영되도록)
             campLog = updatedLog
         }
     }
@@ -159,24 +161,20 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                             Text("등록된 장비가 없습니다.", fontSize = 13.sp, color = Color.Gray)
                         }
                     } else {
-                        // 💡 체크 안 된 장비(false)가 위로, 체크 된 장비(true)가 아래로 오도록 정렬
+                        // 💡 [수정] UserGear 정렬 로직 (name -> modelName)
                         val sortedGear = matchingGear.sortedWith(
-                            compareBy<GearItem> { gear ->
-                                // 1순위: 체크 여부 (체크 안 된 것이 위로)
-                                checkedGearIds.contains(gear.id)
-                            }.thenBy { gear ->
-                                // 2순위: 카테고리명 (ㄱㄴㄷ 순으로 모아서 보여줌)
-                                gear.category
-                            }.thenBy { gear ->
-                                // 3순위: 이름 (같은 카테고리 내에서 이름순)
-                                gear.name
-                            }
+                            compareBy<UserGear> { checkedGearIds.contains(it.id.toString()) }
+                                .thenBy { it.category }
+                                .thenBy { it.modelName }
                         )
 
                         LazyColumn {
                             // 💡 matchingGear 대신 sortedGear를 사용합니다.
                             items(sortedGear, key = { it.id }) { gear ->
-                                val isChecked = checkedGearIds.contains(gear.id)
+                                val isChecked = checkedGearIds.contains(gear.id.toString())
+                                val emoji = when(gear.category) {
+                                    "텐트" -> "⛺" "체어" -> "💺" "테이블" -> "🪑" "조명" -> "💡" else -> "🛠️"
+                                }
 
                                 ListItem(
                                     headlineContent = {
@@ -195,10 +193,11 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                                     color = if (isChecked) Color.Gray else MaterialTheme.colorScheme.primary
                                                 )
                                             }
+                                            Text(emoji, fontSize = 18.sp)
                                             Spacer(modifier = Modifier.width(8.dp))
                                             // 장비 이름
                                             Text(
-                                                text = gear.name,
+                                                text = gear.modelName,
                                                 color = if (isChecked) Color.Gray else Color.Unspecified,
                                                 textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
                                                 fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
@@ -211,40 +210,27 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                     leadingContent = {
                                         Checkbox(
                                             checked = isChecked,
-                                            onCheckedChange = { checked ->
-                                                toggleGearCheck(gear.id, checked) // 💡 자동 저장 함수 호출
-                                            }
+                                            onCheckedChange = { toggleGearCheck(gear.id.toString(), it) }
                                         )
                                     },
                                     // 💡 [핵심] 우측 삭제 버튼 추가
                                     trailingContent = {
                                         IconButton(onClick = {
                                             campLog?.let { currentLog ->
-                                                // 1. gearIds와 checkedGearIds에서 모두 해당 장비 제거
-                                                val updatedGearIds = currentLog.gearIds.filterNot { it == gear.id }
-                                                val updatedCheckedIds = checkedGearIds.filterNot { it == gear.id }
-
-                                                // 2. 객체 업데이트 및 파일 저장
-                                                val updatedLog = currentLog.copy(
-                                                    gearIds = updatedGearIds,
-                                                    checkedGearIds = updatedCheckedIds
-                                                )
+                                                val updatedGearIds = currentLog.gearIds.filterNot { it == gear.id.toString() }
+                                                val updatedCheckedIds = checkedGearIds.filterNot { it == gear.id.toString() }
+                                                val updatedLog = currentLog.copy(gearIds = updatedGearIds, checkedGearIds = updatedCheckedIds)
                                                 val allLogs = loadCampLogs(context).toMutableMap()
                                                 allLogs[date] = updatedLog
                                                 saveCampLogs(context, allLogs)
-
-                                                // 3. UI 상태 즉시 반영
                                                 campLog = updatedLog
                                                 checkedGearIds = updatedCheckedIds.toSet()
-                                                Toast.makeText(context, "삭제되었습니다.", Toast.LENGTH_SHORT).show()
                                             }
                                         }) {
                                             Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color.LightGray)
                                         }
                                     },
-                                    modifier = Modifier.clickable {
-                                        toggleGearCheck(gear.id, !isChecked)
-                                    }
+                                    modifier = Modifier.clickable { toggleGearCheck(gear.id.toString(), !isChecked) }
                                 )
                             }
                         }
@@ -317,16 +303,13 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
             alreadyAddedIds = campLog?.gearIds ?: emptyList(),
             onGearSelected = { gear ->
                 campLog?.let { log ->
-                    val newGearIds = log.gearIds + gear.id
-                    // 즉시 저장 로직
+                    val newGearIds = log.gearIds + gear.id.toString()
                     val updatedLog = log.copy(gearIds = newGearIds)
                     val allLogs = loadCampLogs(context).toMutableMap()
                     allLogs[date] = updatedLog
                     saveCampLogs(context, allLogs)
-
-                    campLog = updatedLog // UI 갱신
-                    // 💡 개별 추가는 창을 닫지 않고 연속 추가 가능하게 유지!
-                    Toast.makeText(context, "${gear.name} 추가됨", Toast.LENGTH_SHORT).show()
+                    campLog = updatedLog
+                    Toast.makeText(context, "${gear.modelName} 추가됨", Toast.LENGTH_SHORT).show()
                 }
             },
             onDismiss = {

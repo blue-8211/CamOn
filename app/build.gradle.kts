@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.google.gms.google-services")
+    id("com.google.devtools.ksp") // Room 컴파일러를 위한 플러그인
 }
 
 android {
@@ -43,6 +44,15 @@ android {
 }
 
 dependencies {
+    // 웹 크롤링을 위한 라이브러리 추가
+    implementation("org.jsoup:jsoup:1.22.1")
+
+    val room_version = "2.6.1"
+
+    implementation("androidx.room:room-runtime:$room_version")
+    implementation("androidx.room:room-ktx:$room_version")
+    ksp("androidx.room:room-compiler:$room_version") // 에러를 잡아줄 핵심 컴파일러
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -69,4 +79,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.compose.material:material-icons-extended")
+    // 확장 아이콘 라이브러리 추가
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
 }

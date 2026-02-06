@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import com.company.camon.data.db.CamonDatabase
 import com.company.camon.data.model.CampLog
 import com.company.camon.data.network.SearchResultItem
 import com.company.camon.data.network.WeatherApiService
@@ -51,7 +52,11 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
     // --- 2. 장비 관련 상태 ---
     val allGroups = remember { loadGearGroups(context) } // 저장된 모든 장비 그룹
-    val allGear = remember { loadGearList(context) }     // 저장된 모든 개별 장비 리스트
+    // --- [수정] MainHomeScreen 상단 데이터 관측 부분 ---
+    val db = remember { CamonDatabase.getDatabase(context) }
+    val gearDao = db.gearDao()
+    // Room DB에서 실시간으로 장비 리스트를 가져옵니다.
+    val allGear by gearDao.getAllUserGears().collectAsState(initial = emptyList())
     var selectedGearIds by remember { mutableStateOf(setOf<String>()) } // 현재 선택된 장비 ID들 (중복방지 Set)
 
     // --- 3. 다이얼로그 제어 상태 ---
@@ -149,10 +154,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     val dailyData = response.list.filter { it.dt_txt.startsWith(selectedDate.toString()) }
 
                     if (dailyData.isNotEmpty()) {
-                        tempMax = dailyData.maxOf { it.main.temp_max }.toInt().toString()
-                        tempMin = dailyData.minOf { it.main.temp_min }.toInt().toString()
-                        windMax = dailyData.maxOf { it.wind.speed }.toString()
-                        windMin = dailyData.minOf { it.wind.speed }.toString()
+                        tempMax = (dailyData.maxOfOrNull { it.main.temp_max } ?: 0.0).toInt().toString()
+                        tempMin = (dailyData.minOfOrNull { it.main.temp_min } ?: 0.0).toInt().toString()
+                        windMax = (dailyData.maxOfOrNull { it.wind.speed } ?: 0.0).toString()
                     } else {
                         tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
                     }
@@ -499,7 +503,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         currentLog?.let { log ->
             // 1. 아직 체크 안 된 장비들만 필터링
             val remainingGear = allGear.filter { gear ->
-                log.gearIds.contains(gear.id) && !log.checkedGearIds.contains(gear.id)
+                log.gearIds.contains(gear.id.toString()) && !log.checkedGearIds.contains(gear.id.toString())
             }
 
             if (remainingGear.isNotEmpty()) {
@@ -535,18 +539,18 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                 tint = Color.Gray
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(gear.name, fontSize = 14.sp)
+                            Text("${gear.brand} ${gear.modelName}", fontSize = 14.sp)
                             Spacer(modifier = Modifier.weight(1f))
 
                             // 💡 여기서 바로 체크하는 기능 (옵션)
                             IconButton(
                                 onClick = {
-                                    val updatedChecked = log.checkedGearIds + gear.id
+                                    val updatedChecked = log.checkedGearIds + gear.id.toString()
                                     val newLog = log.copy(checkedGearIds = updatedChecked)
-                                    val log = campLogs.toMutableMap()
-                                    log[selectedDate.toString()] = newLog
-                                    saveCampLogs(context, log)
-                                    campLogs = log
+                                    val updatedLogs = campLogs.toMutableMap()
+                                    updatedLogs[selectedDate.toString()] = newLog
+                                    saveCampLogs(context, updatedLogs)
+                                    campLogs = updatedLogs
                                 },
                                 modifier = Modifier.size(24.dp)
                             ) {
@@ -605,8 +609,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             alreadyAddedIds = selectedGearIds.toList(), // 현재까지 선택된 ID들 전달
             onGearSelected = { gear ->
                 // 개별 장비를 선택할 때마다 세트에 추가
-                selectedGearIds = selectedGearIds + gear.id
-                Toast.makeText(context, "${gear.name} 선택됨", Toast.LENGTH_SHORT).show()
+                selectedGearIds = selectedGearIds + gear.id.toString()
+                Toast.makeText(context, "${gear.modelName} 선택됨", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showIndividualPicker = false }
         )

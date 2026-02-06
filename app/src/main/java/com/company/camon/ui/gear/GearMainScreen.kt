@@ -32,7 +32,7 @@ fun GearMainScreen(context: Context, naverApi: NaverSearchApi) {
 
         // 2. 선택된 탭에 따른 화면 표시
         when (selectedTab) {
-            0 -> GearRegistrationScreen(context, naverApi)
+            0 -> GearRegistrationScreen(context)
             1 -> GearGroupScreen(context)
         }
     }

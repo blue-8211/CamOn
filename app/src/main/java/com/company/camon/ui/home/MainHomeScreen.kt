@@ -517,6 +517,17 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
                 // 최대 4개까지만 미리보기로 보여줌
                 remainingGear.take(4).forEach { gear ->
+                    // 💡 카테고리에 따른 이모지 결정 로직 추가
+                    val emoji = when(gear.category) {
+                        "텐트" -> "⛺"
+                        "체어" -> "💺"
+                        "테이블" -> "🪑"
+                        "조명" -> "💡"
+                        "침구" -> "🛌"
+                        "취사" -> "🍳"
+                        "화로대" -> "🔥"
+                        else -> "🛠️" // 기본 아이콘
+                    }
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -532,14 +543,15 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.Inventory,
-                                null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.Gray
-                            )
+                            // 💡 기존 Inventory 아이콘 대신 이모지 텍스트를 넣습니다.
+                            Text(emoji, fontSize = 18.sp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("${gear.brand} ${gear.modelName}", fontSize = 14.sp)
+                            // 브랜드와 모델명 표시
+                            Text(
+                                text = "${gear.brand} ${gear.modelName}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                             Spacer(modifier = Modifier.weight(1f))
 
                             // 💡 여기서 바로 체크하는 기능 (옵션)

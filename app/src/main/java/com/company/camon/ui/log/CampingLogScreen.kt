@@ -179,33 +179,28 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                 ListItem(
                                     headlineContent = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            // 💡 카테고리 태그 추가
-                                            Surface(
-                                                color = if (isChecked) Color.LightGray.copy(alpha = 0.3f)
-                                                else MaterialTheme.colorScheme.primaryContainer,
-                                                shape = RoundedCornerShape(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = gear.category,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isChecked) Color.Gray else MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                            Text(emoji, fontSize = 18.sp)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            // 장비 이름
+                                            // 💡 카테고리 태그(Surface)를 제거하고 이모지와 이름을 더 가깝게 배치
+                                            Text(emoji, fontSize = 20.sp)
+                                            Spacer(modifier = Modifier.width(12.dp))
+
+                                            // 장비 모델명
                                             Text(
                                                 text = gear.modelName,
+                                                style = MaterialTheme.typography.bodyLarge,
                                                 color = if (isChecked) Color.Gray else Color.Unspecified,
                                                 textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
-                                                fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
+                                                fontWeight = if (isChecked) FontWeight.Normal else FontWeight.SemiBold
                                             )
                                         }
                                     },
                                     supportingContent = {
-                                        Text(gear.brand, fontSize = 11.sp, modifier = Modifier.padding(start = 42.dp))
+                                        // 💡 브랜드 정보를 한 줄 아래에 은은하게 배치 (여백을 이모지 크기에 맞춤)
+                                        Text(
+                                            text = "${gear.brand} | ${gear.category}",
+                                            fontSize = 12.sp,
+                                            color = Color.Gray,
+                                            modifier = Modifier.padding(start = 32.dp) // 이모지 뒤에 딱 맞게 정렬
+                                        )
                                     },
                                     leadingContent = {
                                         Checkbox(

@@ -61,7 +61,7 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
     // 💡 [수정] matchingGear 타입을 UserGear로 변경하고 ID 매칭 로직 보강
     val matchingGear = remember(allGear, campLog) {
         campLog?.gearIds?.mapNotNull { id ->
-            if (id.startsWith("custom|")) {
+            val gearObj = if (id.startsWith("custom|")) {
                 // 1. 직접 입력(리스트만 추가)인 경우: ID 문자열을 쪼개서 임시 객체 생성
                 val parts = id.split("|")
                 UserGear(
@@ -78,6 +78,7 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                 // 2. 창고에 있는 장비(숫자 ID)인 경우: DB(allGear)에서 찾음
                 allGear.find { it.id.toString() == cleanId }
             }
+            if (gearObj != null) id to gearObj else null
         } ?: emptyList()
     }
 
@@ -109,6 +110,22 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
     // --- [1. 상태 관리 변수 영역에 추가] ---
     var showGroupPicker by remember { mutableStateOf(false) } // 그룹 선택 창 열림 여부
     val allGroups = remember { com.company.camon.util.loadGearGroups(context) } // 모든 그룹 불러오기
+
+    val deleteGear: (String) -> Unit = { idToDelete ->
+        val allLogs = loadCampLogs(context).toMutableMap()
+        val log = allLogs[date]
+        log?.let {
+            // 💡 복잡한 역추적 필요 없이 전달받은 originalId만 리스트에서 빼면 끝!
+            val updatedGearIds = it.gearIds.filterNot { id -> id == idToDelete }
+            val updatedCheckedIds = it.checkedGearIds.filterNot { id -> id == idToDelete }
+
+            val updatedLog = it.copy(gearIds = updatedGearIds, checkedGearIds = updatedCheckedIds)
+            allLogs[date] = updatedLog
+            saveCampLogs(context, allLogs)
+            campLog = updatedLog
+            Toast.makeText(context, "삭제되었습니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -203,15 +220,15 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                     } else {
                         // 💡 [수정] UserGear 정렬 로직 (name -> modelName)
                         val sortedGear = matchingGear.sortedWith(
-                            compareBy<UserGear> { checkedGearIds.contains(it.id.toString()) }
-                                .thenBy { it.category }
-                                .thenBy { it.modelName }
+                            compareBy<Pair<String, UserGear>> { checkedGearIds.contains(it.first) } // 진짜 ID로 체크 확인
+                                .thenBy { it.second.category }
+                                .thenBy { it.second.modelName }
                         )
 
                         LazyColumn {
                             // 💡 matchingGear 대신 sortedGear를 사용합니다.
-                            items(sortedGear, key = { it.id }) { gear ->
-                                val isChecked = checkedGearIds.contains(gear.id.toString())
+                            items(sortedGear, key = { it.first }) { (originalId, gear) ->
+                                val isChecked = checkedGearIds.contains(originalId)
                                 val emoji = when(gear.category) {
                                     "텐트" -> "⛺"
                                     "타프" -> "⛱️"
@@ -253,58 +270,19 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                     leadingContent = {
                                         Checkbox(
                                             checked = isChecked,
-                                            onCheckedChange = { toggleGearCheck(gear.id.toString(), it) }
+                                            onCheckedChange = { toggleGearCheck(originalId, it) }
                                         )
                                     },
                                     // 💡 [핵심] 우측 삭제 버튼 추가
                                     trailingContent = {
                                         IconButton(onClick = {
-                                            // 1. 파일에서 전체 데이터를 즉시 새로 읽어옵니다. (동기화의 핵심)
-                                            val currentLogs = loadCampLogs(context).toMutableMap()
-                                            val targetLog = currentLogs[date]
-
-                                            targetLog?.let { log ->
-                                                // 2. 장비 목록에서 삭제할 ID 찾기
-                                                val updatedGearIds = log.gearIds.filterNot { id ->
-                                                    if (id.startsWith("custom|")) {
-                                                        val parts = id.split("|")
-                                                        parts.getOrNull(3) == gear.modelName && parts.getOrNull(2) == gear.brand
-                                                    } else {
-                                                        id == gear.id.toString()
-                                                    }
-                                                }
-
-                                                // 3. 체크리스트에서도 똑같이 제거
-                                                // 직접 입력 장비는 originalId 문자열로, 일반 장비는 숫자ID로 체크되어 있으므로 둘 다 대응
-                                                val updatedCheckedIds = log.checkedGearIds.filterNot { id ->
-                                                    if (id.startsWith("custom|")) {
-                                                        val parts = id.split("|")
-                                                        parts.getOrNull(3) == gear.modelName && parts.getOrNull(2) == gear.brand
-                                                    } else {
-                                                        id == gear.id.toString()
-                                                    }
-                                                }
-
-                                                // 4. 수정된 로그 객체를 전체 맵에 다시 넣고 저장
-                                                val updatedLog = log.copy(
-                                                    gearIds = updatedGearIds,
-                                                    checkedGearIds = updatedCheckedIds
-                                                )
-                                                currentLogs[date] = updatedLog
-                                                saveCampLogs(context, currentLogs)
-
-                                                // 5. [중요] 화면을 담당하는 상태 변수를 업데이트해서 UI를 즉시 바꿉니다.
-                                                // 만약 상단에서 'allLogs'를 쓰기로 했다면 allLogs = currentLogs
-                                                // 'campLog'를 쓰고 있다면 campLog = updatedLog 를 해줍니다.
-                                                campLog = updatedLog
-
-                                                Toast.makeText(context, "삭제되었습니다.", Toast.LENGTH_SHORT).show()
-                                            }
+                                            // 💡 삭제 시에도 originalId만 있으면 복잡한 if문 없이 바로 filterNot 가능!
+                                            deleteGear(originalId)
                                         }) {
                                             Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color.LightGray)
                                         }
                                     },
-                                    modifier = Modifier.clickable { toggleGearCheck(gear.id.toString(), !isChecked) }
+                                    modifier = Modifier.clickable { toggleGearCheck(originalId, !isChecked) }
                                 )
                             }
                         }

@@ -595,7 +595,16 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                                 // 일반 장비는 숫자 ID 그대로 비교
                                                 id == gear.id.toString()
                                             }
-                                        } ?: gear.id.toString() // 못 찾으면 기본값 사용 (방어 로직)
+                                        } ?: ""
+
+                                        if (originalId.isNotEmpty()) {
+                                            val updatedChecked = log.checkedGearIds + originalId // 원본 문자열 저장!
+                                            val newLog = log.copy(checkedGearIds = updatedChecked)
+                                            val updatedLogs = campLogs.toMutableMap()
+                                            updatedLogs[selectedDate.toString()] = newLog
+                                            saveCampLogs(context, updatedLogs)
+                                            campLogs = updatedLogs
+                                        }
 
                                         // 3. 찾은 진짜 ID로 체크리스트 업데이트
                                         val updatedChecked = log.checkedGearIds + originalId

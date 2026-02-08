@@ -2,6 +2,7 @@ package com.company.camon.ui.gear
 
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
@@ -47,13 +48,69 @@ fun GearRegistrationScreen(context: Context) {
     // (목록 화면 Text 아래쯤에 임시로 배치해보세요)
     Button(onClick = {
         scope.launch {
-            // 테스트용 데이터 3개만 심어보기
-            gearDao.insertMasterGear(MasterGear(category = "텐트", brand = "노르디스크", modelName = "이든 5.5"))
-            gearDao.insertMasterGear(MasterGear(category = "텐트", brand = "헬스포츠", modelName = "바랑에르돔"))
-            gearDao.insertMasterGear(MasterGear(category = "체어", brand = "헬리녹스", modelName = "체어원"))
+            val testData = listOf(
+                // --- [1. 메인 장비] ---
+                MasterGear(category = "텐트", brand = "노르디스크", modelName = "이든 5.5", alias = "Ydun"),
+                MasterGear(category = "텐트", brand = "헬스포츠", modelName = "바랑에르돔", alias = "Varanger"),
+                MasterGear(category = "텐트", brand = "스노우피크", modelName = "랜드록", alias = "Landlock"),
+                MasterGear(category = "텐트", brand = "코오롱", modelName = "안테나", alias = "Antenna"),
+
+                MasterGear(category = "타프", brand = "꼴로르", modelName = "실타프 헥사", alias = "Siltarp"),
+                MasterGear(category = "타프", brand = "스노우피크", modelName = "헥사 에보 Pro", alias = "Evo"),
+
+                MasterGear(category = "체어", brand = "헬리녹스", modelName = "체어원", alias = "ChairOne"),
+                MasterGear(category = "체어", brand = "헬리녹스", modelName = "선셋체어", alias = "Sunset"),
+                MasterGear(category = "체어", brand = "스노우피크", modelName = "로우체어 30", alias = "LowChair"),
+
+                MasterGear(category = "테이블", brand = "베어본즈", modelName = "엔틱 테이블", alias = "Table"),
+                MasterGear(category = "테이블", brand = "헬리녹스", modelName = "테이블원", alias = "TableOne"),
+                MasterGear(category = "테이블", brand = "스노우피크", modelName = "IGT 엔트리", alias = "IGT"),
+
+                MasterGear(category = "조명", brand = "골제로", modelName = "라이트하우스 마이크로", alias = "GoalZero"),
+                MasterGear(category = "조명", brand = "루메나", modelName = "M3", alias = "Lumena"),
+                MasterGear(category = "조명", brand = "크레모아", modelName = "쓰리페이스", alias = "Claymore"),
+
+                MasterGear(category = "침구", brand = "네이처하이크", modelName = "자충매트 10cm", alias = "Mat"),
+                MasterGear(category = "침구", brand = "씨투써밋", modelName = "에어매트", alias = "AirMat"),
+
+                MasterGear(category = "취사", brand = "강천원", modelName = "그리들", alias = "Griddle"),
+                MasterGear(category = "취사", brand = "코베아", modelName = "구이바다 L", alias = "GuiBada"),
+                MasterGear(category = "취사", brand = "트란지아", modelName = "스톰쿡셋", alias = "Trangia"),
+
+                MasterGear(category = "화로대", brand = "도쿄캠프", modelName = "조립식 화로대", alias = "Tokyo"),
+                MasterGear(category = "화로대", brand = "솔로스토브", modelName = "레인저", alias = "Ranger"),
+
+                // --- [2. 도구 (Tool) - 글로벌 관리용] ---
+                MasterGear(category = "도구", brand = "[설치]", modelName = "망치", alias = "Hammer"),
+                MasterGear(category = "도구", brand = "[설치]", modelName = "단조팩 20cm", alias = "Peg"),
+                MasterGear(category = "도구", brand = "[설치]", modelName = "단조팩 30cm", alias = "Peg"),
+                MasterGear(category = "도구", brand = "[설치]", modelName = "스트링/스토퍼", alias = "String"),
+                MasterGear(category = "도구", brand = "[설치]", modelName = "작업용 장갑", alias = "Glove"),
+                MasterGear(category = "도구", brand = "[조리]", modelName = "집게/가위", alias = "KitchenTool"),
+                MasterGear(category = "도구", brand = "[조리]", modelName = "국자/뒤집개", alias = "KitchenTool"),
+                MasterGear(category = "도구", brand = "[조리]", modelName = "다용도 칼/도마", alias = "Knife"),
+                MasterGear(category = "도구", brand = "[세척]", modelName = "수세미/주방세제", alias = "Clean"),
+
+                // --- [3. 소모품 (Consumable) - 글로벌 관리용] ---
+                MasterGear(category = "소모품", brand = "[연료]", modelName = "이소가스 230g", alias = "Gas"),
+                MasterGear(category = "소모품", brand = "[연료]", modelName = "부탄가스", alias = "Butane"),
+                MasterGear(category = "소모품", brand = "[취사]", modelName = "참나무 장작 10kg", alias = "Wood"),
+                MasterGear(category = "소모품", brand = "[취사]", modelName = "착화제", alias = "FireStarter"),
+                MasterGear(category = "소모품", brand = "[위생]", modelName = "물티슈", alias = "WetTissue"),
+                MasterGear(category = "소모품", brand = "[위생]", modelName = "두루마리 휴지", alias = "Tissue"),
+                MasterGear(category = "소모품", brand = "[위생]", modelName = "쓰레기 봉투", alias = "Bag"),
+                MasterGear(category = "소모품", brand = "[위생]", modelName = "키친타올", alias = "KitchenPaper")
+            )
+
+            // DB에 순차적으로 주입
+            testData.forEach { gear ->
+                gearDao.insertMasterGear(gear)
+            }
+
+            Toast.makeText(context, "총 ${testData.size}개의 마스터 데이터가 주입되었습니다!", Toast.LENGTH_SHORT).show()
         }
     }) {
-        Text("테스트 데이터 채우기 💉")
+        Text("마스터 데이터 일괄 채우기 💉")
     }
 
     // 화면 상태 관리 (false: 목록, true: 등록 단계)

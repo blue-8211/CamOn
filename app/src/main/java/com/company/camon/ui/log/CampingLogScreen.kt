@@ -57,6 +57,15 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
     var showQuickAdd by remember { mutableStateOf(false) } // 직접 입력 다이얼로그
     val scope = rememberCoroutineScope()
 
+    // --- [기존 showQuickAdd 아래에 추가] ---
+    var showMasterItemPicker by remember { mutableStateOf(false) } // 마스터 팝업 제어
+    var targetCategory by remember { mutableStateOf("도구") } // "도구" 또는 "소모품"
+
+    // DB에서 마스터 아이템들 실시간 관측
+    val masterItemsByCat by gearDao.getMasterGearsByCategory(targetCategory).collectAsState(initial = emptyList())
+
+    var isMenuExpanded by remember { mutableStateOf(false) } // 메뉴 확장 여부
+
     // 현재 로그의 gearIds에 포함된 장비들만 필터링하여 메인 리스트 구성
     // 💡 [수정] matchingGear 타입을 UserGear로 변경하고 ID 매칭 로직 보강
     val matchingGear = remember(allGear, campLog) {
@@ -141,6 +150,57 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                 },
                 actions = {}
             )
+        },
+        // 💡 FAB 영역 추가
+        floatingActionButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                // 메뉴가 열렸을 때 나타나는 작은 버튼들
+                if (isMenuExpanded) {
+                    FloatingMenuItem(text = "내 장비 그룹 추가", icon = Icons.Default.Dashboard, color = MaterialTheme.colorScheme.secondary) {
+                        showGroupPicker = true
+                        isMenuExpanded = false
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    FloatingMenuItem(text = "내 장비 개별 추가", icon = Icons.Default.Add, color = MaterialTheme.colorScheme.primary) {
+                        showIndividualPicker = true
+                        isMenuExpanded = false
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    FloatingMenuItem(text = "✍️ 미등록 장비 추가", icon = Icons.Default.Edit, color = MaterialTheme.colorScheme.tertiary) {
+                        showQuickAdd = true
+                        isMenuExpanded = false
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    FloatingMenuItem(text = "🧰 도구 추가", icon = Icons.Default.Build, color = Color(0xFF607D8B)) {
+                        targetCategory = "도구" // 또는 선택 로직 추가
+                        showMasterItemPicker = true
+                        isMenuExpanded = false
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // 💡 4. 소모품 추가 (새로 추가)
+                    FloatingMenuItem(text = "🛒 소모품 추가", icon = Icons.Default.ShoppingBasket, color = Color(0xFFFFA000)) {
+                        targetCategory = "소모품" // 👈 타겟을 소모품으로 설정
+                        showMasterItemPicker = true
+                        isMenuExpanded = false
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // 메인 [+] 버튼
+                ExtendedFloatingActionButton(
+                    onClick = { isMenuExpanded = !isMenuExpanded },
+                    containerColor = if (isMenuExpanded) Color.Gray else MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        imageVector = if (isMenuExpanded) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = "추가"
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isMenuExpanded) "닫기" else "장비 추가")
+                }
+            }
         }
     ) { padding ->
         if (campLog == null) {
@@ -206,6 +266,69 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                     )
                 }
 
+                // --- [LinearProgressIndicator 와 Card 사이(약 165라인 근처)에 추가] ---
+                val hasConsumables = matchingGear.any { it.first.startsWith("custom|소모품|") }
+                val hasTools = matchingGear.any { it.first.startsWith("custom|도구|") }
+
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    // 1. 도구 유도 섹션 (도구가 없을 때만 노출)
+                    if (!hasTools) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = Color(0xFFE1F5FE).copy(alpha = 0.6f), // 도구는 연한 파란색 계열
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Build, contentDescription = null, tint = Color(0xFF0288D1), modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("망치, 팩 등 기본 도구를 추가할까요? ", fontSize = 12.sp, color = Color.DarkGray)
+                                Text(
+                                    text = "[+ 도구 추가]",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF0288D1),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable {
+                                        targetCategory = "도구"
+                                        showMasterItemPicker = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. 소모품 유도 섹션 (소모품이 없을 때만 노출)
+                    if (!hasConsumables) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = Color(0xFFFFF9C4).copy(alpha = 0.6f), // 소모품은 연한 노란색 계열
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color(0xFFFBC02D), modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("부탄가스, 휴지 등 소모품도 잊지 마세요! ", fontSize = 12.sp, color = Color.DarkGray)
+                                Text(
+                                    text = "[+ 소모품 추가]",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFE65100),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable {
+                                        targetCategory = "소모품"
+                                        showMasterItemPicker = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // --- [3. 메인 체크리스트 (삭제 기능 포함)] ---
@@ -238,7 +361,9 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                     "침구" -> "🛌"
                                     "취사" -> "🍳"
                                     "화로대" -> "🔥"
-                                    else -> "🛠️" // 기본 아이콘
+                                    "도구" -> "🧰"    // 💡 도구 전용 이모지 추가
+                                    "소모품" -> "🛒"  // 💡 소모품 전용 이모지 추가
+                                    else -> "📦"     // 기존 기타(🛠️)를 박스 아이콘으로 변경하면 더 깔끔합니다.
                                 }
 
                                 ListItem(
@@ -293,6 +418,7 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
 
                 // --- [4. 최종 저장 버튼] ---
                 // --- [4. 하단 액션 버튼: 그룹 및 개별 장비 추가] ---
+                /*
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -300,16 +426,28 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp) // 버튼 사이 간격
                 ) {
                     Button(onClick = { showGroupPicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-                        Text("내장비그룹 추가", fontSize = 10.sp)
+                        Text("그룹 추가", fontSize = 10.sp)
                     }
                     Button(onClick = { showIndividualPicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
-                        Text("내장비개별 추가", fontSize = 10.sp)
+                        Text("개별 추가", fontSize = 10.sp)
                     }
                     // 💡 3번 버튼: 직접 입력 추가
                     Button(onClick = { showQuickAdd = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
                         Text("미등록장비 추가", fontSize = 10.sp)
                     }
-                }
+                    // 💡 [새로 추가] 도구 추가 버튼
+                    Button(
+                        onClick = {
+                            targetCategory = "도구"
+                            showMasterItemPicker = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF607D8B)) // 도구 느낌의 차분한 색
+                    ) {
+                        Text("도구 추가", fontSize = 10.sp)
+                    }
+                }*/
             }
         }
     }
@@ -417,6 +555,31 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
             }
         )
     }
+
+    // --- [CampingLogScreen 최하단(다이얼로그 모음)에 추가] ---
+    if (showMasterItemPicker) {
+        MasterItemPickerDialog(
+            title = if (targetCategory == "도구") "기본 도구 선택" else "필수 소모품 추천",
+            items = masterItemsByCat,
+            onItemsSelected = { selectedList ->
+                val allLogs = loadCampLogs(context).toMutableMap()
+                val log = allLogs[date]
+                log?.let { currentLog ->
+                    // custom|카테고리|브랜드|모델명 형식으로 ID 생성
+                    val newIds = selectedList.map { "custom|${it.category}|${it.brand}|${it.modelName}" }
+                    val updatedIds = (currentLog.gearIds + newIds).distinct()
+
+                    val updatedLog = currentLog.copy(gearIds = updatedIds)
+                    allLogs[date] = updatedLog
+                    saveCampLogs(context, allLogs)
+                    campLog = updatedLog
+                }
+                showMasterItemPicker = false
+                Toast.makeText(context, "체크리스트에 추가되었습니다.", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { showMasterItemPicker = false }
+        )
+    }
 }
 
 @Composable
@@ -484,4 +647,84 @@ fun QuickGearAddDialog(
             TextButton(onClick = onDismiss) { Text(if (isSavedToWarehouse) "닫기" else "취소") }
         }
     )
+}
+
+@Composable
+fun MasterItemPickerDialog(
+    title: String,
+    items: List<com.company.camon.data.model.MasterGear>,
+    onItemsSelected: (List<com.company.camon.data.model.MasterGear>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectedItems = remember { mutableStateListOf<com.company.camon.data.model.MasterGear>() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            if (items.isEmpty()) {
+                Text("데이터가 없습니다. 💉 버튼으로 데이터를 먼저 심어주세요.", fontSize = 13.sp)
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxHeight(0.6f)) {
+                    items(items) { item ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (selectedItems.contains(item)) selectedItems.remove(item) else selectedItems.add(item)
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = selectedItems.contains(item),
+                                onCheckedChange = {
+                                    if (it) selectedItems.add(item) else selectedItems.remove(item)
+                                }
+                            )
+                            Text("${item.brand} ${item.modelName}", modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onItemsSelected(selectedItems) }) { Text("추가하기") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        }
+    )
+}
+
+@Composable
+fun FloatingMenuItem(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(end = 4.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = Color.Black.copy(alpha = 0.7f),
+            modifier = Modifier.padding(end = 8.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        SmallFloatingActionButton(
+            onClick = onClick,
+            containerColor = color,
+            contentColor = Color.White,
+            shape = CircleShape,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+    }
 }

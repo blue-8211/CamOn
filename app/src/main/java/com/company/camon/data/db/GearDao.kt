@@ -38,4 +38,21 @@ interface GearDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMasterGear(masterGear: MasterGear) // 👈 마스터 데이터 심을 때 필요!
+    // --- [추가 1. 도구/소모품 전용 조회] ---
+    // 💡 도구 추가 버튼이나 소모품 팝업에서 특정 카테고리 아이템만 가져올 때 사용합니다.
+    @Query("SELECT * FROM master_gear WHERE category = :category ORDER BY modelName ASC")
+    fun getMasterGearsByCategory(category: String): Flow<List<MasterGear>>
+
+    // --- [추가 2. 일반 장비 검색 최적화] ---
+    // 💡 내 창고에 장비 등록할 때, '도구'나 '소모품'은 검색 결과에서 제외하기 위함입니다.
+    @Query("""
+        SELECT * FROM master_gear 
+        WHERE category NOT IN ('도구', '소모품') 
+        AND (brand LIKE '%' || :query || '%' OR modelName LIKE '%' || :query || '%')
+    """)
+    suspend fun searchMainGears(query: String): List<MasterGear>
+
+    // 💡 특정 카테고리의 모든 마스터 기어 가져오기 (Suspend 버전 - 일회성 조회용)
+    @Query("SELECT * FROM master_gear WHERE category = :category")
+    suspend fun getMasterGearsByCategoryOnce(category: String): List<MasterGear>
 }

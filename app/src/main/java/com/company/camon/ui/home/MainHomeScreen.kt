@@ -550,7 +550,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         "침구" -> "🛌"
                         "취사" -> "🍳"
                         "화로대" -> "🔥"
-                        else -> "🛠️" // 기본 아이콘
+                        "도구" -> "🧰"    // 💡 도구 전용 이모지 추가
+                        "소모품" -> "🛒"  // 💡 소모품 전용 이모지 추가
+                        else -> "📦"     // 기존 기타(🛠️)를 박스 아이콘으로 변경하면 더 깔끔합니다.
                     }
                     Surface(
                         modifier = Modifier

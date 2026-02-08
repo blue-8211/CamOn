@@ -173,7 +173,15 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                             items(sortedGear, key = { it.id }) { gear ->
                                 val isChecked = checkedGearIds.contains(gear.id.toString())
                                 val emoji = when(gear.category) {
-                                    "텐트" -> "⛺" "체어" -> "💺" "테이블" -> "🪑" "조명" -> "💡" else -> "🛠️"
+                                    "텐트" -> "⛺"
+                                    "타프" -> "⛱️"
+                                    "체어" -> "💺"
+                                    "테이블" -> "🪑"
+                                    "조명" -> "💡"
+                                    "침구" -> "🛌"
+                                    "취사" -> "🍳"
+                                    "화로대" -> "🔥"
+                                    else -> "🛠️" // 기본 아이콘
                                 }
 
                                 ListItem(

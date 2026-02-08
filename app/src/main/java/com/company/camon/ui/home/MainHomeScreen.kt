@@ -520,6 +520,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     // 💡 카테고리에 따른 이모지 결정 로직 추가
                     val emoji = when(gear.category) {
                         "텐트" -> "⛺"
+                        "타프" -> "⛱️"
                         "체어" -> "💺"
                         "테이블" -> "🪑"
                         "조명" -> "💡"

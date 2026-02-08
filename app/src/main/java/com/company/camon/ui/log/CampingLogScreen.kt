@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.company.camon.data.db.CamonDatabase // 💡 추가
@@ -28,6 +29,9 @@ import com.company.camon.util.loadCampLogs
 import com.company.camon.util.loadGearList
 import com.company.camon.util.saveCampLogs
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextDecoration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +49,7 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
         campLog?.checkedGearIds?.toSet() ?: emptySet()
     }
 
-// 화면 진입 시 최신화 (메인 화면 반영용)
+    // 화면 진입 시 최신화 (메인 화면 반영용)
     LaunchedEffect(Unit) {
         campLog = loadCampLogs(context)[date]
     }
@@ -65,6 +69,9 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
     val masterItemsByCat by gearDao.getMasterGearsByCategory(targetCategory).collectAsState(initial = emptyList())
 
     var isMenuExpanded by remember { mutableStateOf(false) } // 메뉴 확장 여부
+
+    // 각 카테고리가 열려있는지 닫혀있는지 저장하는 지도 (기본값은 모두 열림)
+    val expandedStates = remember { mutableStateMapOf<String, Boolean>() }
 
     // 현재 로그의 gearIds에 포함된 장비들만 필터링하여 메인 리스트 구성
     // 💡 [수정] matchingGear 타입을 UserGear로 변경하고 ID 매칭 로직 보강
@@ -341,91 +348,151 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                             Text("등록된 장비가 없습니다.", fontSize = 13.sp, color = Color.Gray)
                         }
                     } else {
-                        // 💡 [수정] UserGear 정렬 로직 (name -> modelName)
-                        val sortedGear = matchingGear.sortedWith(
-                            compareBy<Pair<String, UserGear>> { checkedGearIds.contains(it.first) } // 진짜 ID로 체크 확인
-                                .thenBy { it.second.category }
-                                .thenBy { it.second.modelName }
+                        // 1️⃣ [데이터 가공] 카테고리별 그룹화 및 '똑똑한' 정렬
+                        val groupedGear = matchingGear.groupBy { it.second.category }
+
+                        // 정렬 순서: 미완료 카테고리 우선 -> 단일 품목 우선 -> 가나다순
+                        val sortedCategories = groupedGear.keys.sortedWith(
+                            compareBy<String> { category ->
+                                // 해당 카테고리의 모든 아이템이 체크되었는지 확인 (다 됐으면 아래로)
+                                groupedGear[category]?.all { checkedGearIds.contains(it.first) } ?: false
+                            }
+                                .thenByDescending { groupedGear[it]?.size == 1 } // 단일 품목(1열)을 위로
+                                .thenBy { it } // 마지막으로 가나다순
                         )
 
-                        LazyColumn {
-                            // 💡 matchingGear 대신 sortedGear를 사용합니다.
-                            items(sortedGear, key = { it.first }) { (originalId, gear) ->
-                                val isChecked = checkedGearIds.contains(originalId)
-                                val emoji = when(gear.category) {
-                                    "텐트" -> "⛺"
-                                    "타프" -> "⛱️"
-                                    "체어" -> "💺"
-                                    "테이블" -> "🪑"
-                                    "조명" -> "💡"
-                                    "침구" -> "🛌"
-                                    "취사" -> "🍳"
-                                    "화로대" -> "🔥"
-                                    "도구" -> "🧰"    // 💡 도구 전용 이모지 추가
-                                    "소모품" -> "🛒"  // 💡 소모품 전용 이모지 추가
-                                    else -> "📦"     // 기존 기타(🛠️)를 박스 아이콘으로 변경하면 더 깔끔합니다.
+                        // 2️⃣ 2열 그리드용 LazyColumn 시작
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 16.dp)
+                        ){
+                            sortedCategories.forEach { category ->
+                                val itemsInCat = groupedGear[category] ?: return@forEach
+                                // 💡 핵심 로직: 아이템이 2개 이상일 때만 접기 기능 활성/헤더 노출
+                                val isSingleItem = itemsInCat.size == 1
+                                // 💡 [핵심 로직] 모두 체크되었는지 확인
+                                val isAllChecked = itemsInCat.all { checkedGearIds.contains(it.first) }
+
+                                // 💡 모두 체크되었다면 기본적으로 '접힘(false)', 아니면 사용자가 설정한 상태나 기본값(true)을 따름
+                                val isExpanded = if (isAllChecked) {
+                                    expandedStates.getOrDefault(category, false) // 다 챙겼으면 기본은 접힘
+                                } else {
+                                    expandedStates.getOrDefault(category, true)  // 남은 게 있으면 기본은 펼침
                                 }
+                                // 💡 카테고리에 맞는 대표 이모지 설정
+                                val categoryEmoji = when(category) {
+                                    "텐트" -> "⛺" "타프" -> "⛱️" "체어" -> "💺" "테이블" -> "🪑"
+                                    "조명" -> "💡" "침구" -> "🛌" "취사" -> "🍳" "화로대" -> "🔥"
+                                    "도구" -> "🧰" "소모품" -> "🛒"
+                                    else -> "📦"
+                                }
+                                // A. 카테고리 헤더 (2개 이상일 때만 노출)
+                                //if (!isSingleItem) {
+                                    // A. 카테고리 헤더 (📍 텐트 (1/3))
+                                    item {
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    expandedStates[category] = !isExpanded
+                                                }, // 💡 클릭 시 반전
+                                            color = if (isAllChecked) {
+                                                // 다 체크된 건 헤더 색상을 좀 더 연하게 빼서 "완료됨"을 표현
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                            } else {
+                                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(
+                                                    horizontal = 16.dp,
+                                                    vertical = 8.dp
+                                                ),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // 완료 시  ✅ 이모지를 넣으면 더 직관적입니다
+                                                val headerEmoji = if (isAllChecked) "✅" else categoryEmoji
 
-                                // 💡 [여기서부터 ListItem 대신 들어가는 압축형 Row]
-                                Column {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { toggleGearCheck(originalId, !isChecked) }
-                                            .padding(horizontal = 12.dp, vertical = 4.dp), // 패딩 대폭 축소
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // 1. 체크박스
-                                        Checkbox(
-                                            checked = isChecked,
-                                            onCheckedChange = { toggleGearCheck(originalId, it) },
-                                            modifier = Modifier.size(32.dp) // 클릭 영역 확보
-                                        )
-
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        // 2. 이모지 + 이름 + 브랜드 (중앙 텍스트 영역)
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(emoji, fontSize = 16.sp)
-                                                Spacer(modifier = Modifier.width(8.dp))
+                                                // 💡 헤더에 이모지 배치
                                                 Text(
-                                                    text = gear.modelName,
-                                                    fontSize = 15.sp,
-                                                    fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Bold,
-                                                    color = if (isChecked) Color.Gray else Color.Unspecified,
-                                                    style = androidx.compose.ui.text.TextStyle(
-                                                        textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
-                                                    )
+                                                    text = "$headerEmoji $category",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+
+                                                Spacer(modifier = Modifier.width(8.dp))
+
+                                                val checkedCount =
+                                                    itemsInCat.count { checkedGearIds.contains(it.first) }
+                                                Text(
+                                                    text = "($checkedCount/${itemsInCat.size})",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+
+                                                Spacer(modifier = Modifier.weight(1f))
+
+                                                // 💡 펼침/접힘 아이콘 추가
+                                                Icon(
+                                                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
                                                 )
                                             }
-                                            Text(
-                                                text = "${gear.brand} | ${gear.category}",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray,
-                                                modifier = Modifier.padding(start = 24.dp) // 이모지 너비만큼 밀어줌
-                                            )
-                                        }
-
-                                        // 3. 삭제 버튼 (작고 깔끔하게 유지)
-                                        IconButton(
-                                            onClick = { deleteGear(originalId) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "삭제",
-                                                tint = Color.LightGray.copy(alpha = 0.6f),
-                                                modifier = Modifier.size(18.dp)
-                                            )
                                         }
                                     }
-                                    // 💡 얇은 구분선 (항목 간 경계 명확화)
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(horizontal = 16.dp),
-                                        thickness = 0.5.dp,
-                                        color = Color.LightGray.copy(alpha = 0.2f)
-                                    )
+                                /*} else {
+                                    // 💡 아이템이 하나일 때는 헤더 대신 아주 얇은 구분선이나 여백만 살짝 줍니다.
+                                    item { Spacer(modifier = Modifier.height(8.dp)) }
+                                }*/
+
+                                // B. 아이템 2개씩 묶어서 그리기
+                                // B. 아이템 영역 (isExpanded가 true일 때만 렌더링)
+                                if (isExpanded) {
+                                    // 카테고리 내부에서도 체크 안 된 것을 위로 정렬
+                                    val sortedItemsInCat = itemsInCat.sortedBy { checkedGearIds.contains(it.first) }
+
+                                    if (isSingleItem) {
+                                        // 💡 1열 Wide 배치 (이모지 포함)
+                                        item {
+                                            val (originalId, gear) = sortedItemsInCat.first()
+
+                                            CompactGridItem(
+                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                                gear = gear,
+                                                isChecked = checkedGearIds.contains(originalId),
+                                                emoji = null,
+                                                //containerColor = Color.White, // 👈 밝은 색상
+                                                onCheck = { toggleGearCheck(originalId, it) },
+                                                onDelete = { deleteGear(originalId) }
+                                            )
+                                        }
+                                    } else {
+                                        // 💡 2열 Grid 배치 (이모지 제외)
+                                        val rows = sortedItemsInCat.chunked(2)
+                                        items(rows) { rowItems ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                rowItems.forEach { (originalId, gear) ->
+                                                    CompactGridItem(
+                                                        modifier = Modifier.weight(1f),
+                                                        gear = gear,
+                                                        isChecked = checkedGearIds.contains(originalId),
+                                                        emoji = null,
+                                                        // 👈 약간의 색감을 주어 '그룹'임을 표시 (연한 블루그레이나 테마 연한색)
+                                                        //containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                        onCheck = { toggleGearCheck(originalId, it) },
+                                                        onDelete = { deleteGear(originalId) }
+                                                    )
+                                                }
+                                                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -743,6 +810,66 @@ fun FloatingMenuItem(
             modifier = Modifier.size(40.dp)
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+fun CompactGridItem(
+    modifier: Modifier,
+    gear: UserGear,
+    isChecked: Boolean,
+    emoji: String? = null, // 💡 이모지 옵션 추가
+    // 💡 배경색과 테두리색을 매개변수로 추가 (기본값 설정)
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    onCheck: (Boolean) -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            // 💡 체크되면 투명하게, 아니면 전달받은 색상 적용
+            containerColor = if (isChecked) Color.Transparent else containerColor
+        ),
+        // 체크 안 됐을 때만 아주 연한 테두리를 주어 구분감을 높임
+        border = if (isChecked) BorderStroke(0.5.dp, Color.LightGray)
+                 else BorderStroke(0.5.dp, containerColor.copy(alpha = 0.8f))
+    ) {
+        Row(
+            modifier = Modifier.padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = isChecked, onCheckedChange = onCheck, modifier = Modifier.size(24.dp))
+            Column(modifier = Modifier.weight(1f).clickable { onCheck(!isChecked) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 💡 이모지가 전달되었을 때만 텍스트 앞에 표시
+                    if (emoji != null) {
+                        Text(text = emoji, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                        text = gear.modelName,
+                        fontSize = 13.sp,
+                        fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(textDecoration = if (isChecked) TextDecoration.LineThrough else null),
+                        color = if (isChecked) Color.Gray else Color.Unspecified
+                    )
+                }
+                Text(
+                    text = gear.brand,
+                    fontSize = 10.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    // 이모지가 있을 때는 브랜드명도 살짝 들여쓰기해서 수직을 맞춥니다.
+                    modifier = Modifier.padding(start = if (emoji != null) 20.dp else 0.dp)
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(20.dp)) {
+                Icon(Icons.Default.Close, null, tint = Color.LightGray.copy(alpha = 0.5f), modifier = Modifier.size(12.dp))
+            }
         }
     }
 }

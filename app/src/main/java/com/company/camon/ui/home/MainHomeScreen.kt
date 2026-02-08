@@ -116,6 +116,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     }
     // --- [수정된 날씨 호출 로직] ---
     LaunchedEffect(selectedDate, selectedSearchItem) {
+        // 💡 [추가] 날짜가 바뀌거나 화면이 갱신될 때 파일에서 로그를 새로 읽어옵니다.
+        // 이렇게 하면 상세 화면에서 체크하고 돌아왔을 때 데이터가 딱 맞게 됩니다.
+        campLogs = loadCampLogs(context)
+
         val today = LocalDate.now()
 
         // 1. 과거 날짜 처리
@@ -501,9 +505,28 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         }
         // --- [진행률 카드 바로 아래에 추가] ---
         currentLog?.let { log ->
-            // 1. 아직 체크 안 된 장비들만 필터링
-            val remainingGear = allGear.filter { gear ->
-                log.gearIds.contains(gear.id.toString()) && !log.checkedGearIds.contains(gear.id.toString())
+            // 1. 체크 안 된 장비들의 'ID 문자열'만 먼저 추출
+            val remainingGearIds = log.gearIds.filter { id ->
+                !log.checkedGearIds.contains(id)
+            }
+
+            // 2. 추출된 ID들을 객체(UserGear)로 변환
+            val remainingGear = remainingGearIds.mapNotNull { id ->
+                if (id.startsWith("custom|")) {
+                    // 💡 [직접 입력 장비 처리] 문자열 쪼개서 임시 객체 생성
+                    val parts = id.split("|")
+                    com.company.camon.data.model.UserGear(
+                        id = id.hashCode().toLong(), // 임시 ID
+                        category = parts.getOrNull(1) ?: "기타",
+                        brand = parts.getOrNull(2) ?: "",
+                        modelName = parts.getOrNull(3) ?: "장비",
+                        quantity = parts.getOrNull(4)?.toIntOrNull() ?: 1,
+                        memo = parts.getOrNull(5) ?: ""
+                    )
+                } else {
+                    // 💡 [내 장비 등록 장비 처리] DB에서 찾기
+                    allGear.find { it.id.toString() == id.trim() }
+                }
             }
 
             if (remainingGear.isNotEmpty()) {
@@ -558,12 +581,34 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                             // 💡 여기서 바로 체크하는 기능 (옵션)
                             IconButton(
                                 onClick = {
-                                    val updatedChecked = log.checkedGearIds + gear.id.toString()
-                                    val newLog = log.copy(checkedGearIds = updatedChecked)
-                                    val updatedLogs = campLogs.toMutableMap()
-                                    updatedLogs[selectedDate.toString()] = newLog
-                                    saveCampLogs(context, updatedLogs)
-                                    campLogs = updatedLogs
+                                    // 1. 현재 로그를 안전하게 가져옵니다.
+                                    val currentLogData = campLogs[selectedDate.toString()]
+
+                                    currentLogData?.let { log ->
+                                        // 2. [핵심] 직접 입력 장비인지 확인하여 원본 ID(custom|...)를 찾습니다.
+                                        val originalId = log.gearIds.find { id ->
+                                            if (id.startsWith("custom|")) {
+                                                val parts = id.split("|")
+                                                // 모델명과 브랜드가 일치하는지 확인
+                                                parts.getOrNull(3) == gear.modelName && parts.getOrNull(2) == gear.brand
+                                            } else {
+                                                // 일반 장비는 숫자 ID 그대로 비교
+                                                id == gear.id.toString()
+                                            }
+                                        } ?: gear.id.toString() // 못 찾으면 기본값 사용 (방어 로직)
+
+                                        // 3. 찾은 진짜 ID로 체크리스트 업데이트
+                                        val updatedChecked = log.checkedGearIds + originalId
+                                        val newLog = log.copy(checkedGearIds = updatedChecked)
+
+                                        val updatedLogs = campLogs.toMutableMap()
+                                        updatedLogs[selectedDate.toString()] = newLog
+                                        saveCampLogs(context, updatedLogs)
+
+                                        // 4. UI 즉시 반영
+                                        campLogs = updatedLogs
+                                        Toast.makeText(context, "장비를 챙겼습니다! 🎒", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 modifier = Modifier.size(24.dp)
                             ) {

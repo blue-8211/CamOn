@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +27,7 @@ import com.company.camon.ui.component.IndividualGearPicker
 import com.company.camon.util.loadCampLogs
 import com.company.camon.util.loadGearList
 import com.company.camon.util.saveCampLogs
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,33 +37,71 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
     val gearDao = db.gearDao()
     // 💡 [수정] Room DB에서 실시간 장비 리스트를 가져옵니다.
     val allGear by gearDao.getAllUserGears().collectAsState(initial = emptyList())
-    // 현재 날짜의 로그 데이터를 불러옵니다.
+    // 기존처럼 campLog를 사용합니다.
     var campLog by remember { mutableStateOf(loadCampLogs(context)[date]) }
+
+    // 💡 [핵심] checkedGearIds는 변수가 아니라 campLog에서 실시간으로 읽어오는 '창문' 역할만 합니다.
+    val checkedGearIds = remember(campLog) {
+        campLog?.checkedGearIds?.toSet() ?: emptySet()
+    }
+
+// 화면 진입 시 최신화 (메인 화면 반영용)
+    LaunchedEffect(Unit) {
+        campLog = loadCampLogs(context)[date]
+    }
 
     // 장비 추가 다이얼로그 및 검색어 상태
     var showIndividualPicker by remember { mutableStateOf(false) }
     var gearSearchQuery by remember { mutableStateOf("") }
 
-    // 체크박스 상태 (저장된 리스트를 가져와서 관리)
-    var checkedGearIds by remember { mutableStateOf(campLog?.checkedGearIds?.toSet() ?: emptySet()) }
+    var showQuickAdd by remember { mutableStateOf(false) } // 직접 입력 다이얼로그
+    val scope = rememberCoroutineScope()
 
     // 현재 로그의 gearIds에 포함된 장비들만 필터링하여 메인 리스트 구성
     // 💡 [수정] matchingGear 타입을 UserGear로 변경하고 ID 매칭 로직 보강
-    val matchingGear = allGear.filter { gear ->
-        campLog?.gearIds?.contains(gear.id.toString()) == true
+    val matchingGear = remember(allGear, campLog) {
+        campLog?.gearIds?.mapNotNull { id ->
+            if (id.startsWith("custom|")) {
+                // 1. 직접 입력(리스트만 추가)인 경우: ID 문자열을 쪼개서 임시 객체 생성
+                val parts = id.split("|")
+                UserGear(
+                    id = id.hashCode().toLong(), // 중복 방지용 임시 ID
+                    category = parts.getOrNull(1) ?: "기타",
+                    brand = parts.getOrNull(2) ?: "",
+                    modelName = parts.getOrNull(3) ?: "장비",
+                    quantity = parts.getOrNull(4)?.toIntOrNull() ?: 1,
+                    memo = parts.getOrNull(5) ?: ""
+                )
+            } else {
+                // 💡 .trim()을 추가하여 공백으로 인한 매칭 실패 방지
+                val cleanId = id.trim()
+                // 2. 창고에 있는 장비(숫자 ID)인 경우: DB(allGear)에서 찾음
+                allGear.find { it.id.toString() == cleanId }
+            }
+        } ?: emptyList()
     }
 
-    // 💡 공통으로 사용할 저장 함수를 내부에서 정의하거나 로직을 합칩니다.
     val toggleGearCheck: (String, Boolean) -> Unit = { gearId, shouldCheck ->
-        val newSet = checkedGearIds.toMutableSet()
-        if (shouldCheck) newSet.add(gearId) else newSet.remove(gearId)
-        checkedGearIds = newSet
+        // 1. 파일에서 전체 데이터를 즉시 읽어옵니다.
+        val allLogs = loadCampLogs(context).toMutableMap()
+        val currentLog = allLogs[date]
 
-        campLog?.let { currentLog ->
-            val updatedLog = currentLog.copy(checkedGearIds = newSet.toList())
-            val allLogs = loadCampLogs(context).toMutableMap()
+        currentLog?.let { log ->
+            // 2. 체크 상태 업데이트 (MutableSet으로 중복 방지 및 처리)
+            val newCheckedSet = log.checkedGearIds.toMutableSet()
+            if (shouldCheck) {
+                newCheckedSet.add(gearId)
+            } else {
+                newCheckedSet.remove(gearId)
+            }
+
+            // 3. 수정된 데이터 객체 생성 및 파일 저장
+            val updatedLog = log.copy(checkedGearIds = newCheckedSet.toList())
             allLogs[date] = updatedLog
             saveCampLogs(context, allLogs)
+
+            // 4. 💡 [핵심] campLog 상태 변수를 업데이트!
+            // 이렇게 하면 위에서 선언한 val checkedGearIds가 자동으로 이 값을 반영합니다.
             campLog = updatedLog
         }
     }
@@ -219,15 +259,46 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                     // 💡 [핵심] 우측 삭제 버튼 추가
                                     trailingContent = {
                                         IconButton(onClick = {
-                                            campLog?.let { currentLog ->
-                                                val updatedGearIds = currentLog.gearIds.filterNot { it == gear.id.toString() }
-                                                val updatedCheckedIds = checkedGearIds.filterNot { it == gear.id.toString() }
-                                                val updatedLog = currentLog.copy(gearIds = updatedGearIds, checkedGearIds = updatedCheckedIds)
-                                                val allLogs = loadCampLogs(context).toMutableMap()
-                                                allLogs[date] = updatedLog
-                                                saveCampLogs(context, allLogs)
+                                            // 1. 파일에서 전체 데이터를 즉시 새로 읽어옵니다. (동기화의 핵심)
+                                            val currentLogs = loadCampLogs(context).toMutableMap()
+                                            val targetLog = currentLogs[date]
+
+                                            targetLog?.let { log ->
+                                                // 2. 장비 목록에서 삭제할 ID 찾기
+                                                val updatedGearIds = log.gearIds.filterNot { id ->
+                                                    if (id.startsWith("custom|")) {
+                                                        val parts = id.split("|")
+                                                        parts.getOrNull(3) == gear.modelName && parts.getOrNull(2) == gear.brand
+                                                    } else {
+                                                        id == gear.id.toString()
+                                                    }
+                                                }
+
+                                                // 3. 체크리스트에서도 똑같이 제거
+                                                // 직접 입력 장비는 originalId 문자열로, 일반 장비는 숫자ID로 체크되어 있으므로 둘 다 대응
+                                                val updatedCheckedIds = log.checkedGearIds.filterNot { id ->
+                                                    if (id.startsWith("custom|")) {
+                                                        val parts = id.split("|")
+                                                        parts.getOrNull(3) == gear.modelName && parts.getOrNull(2) == gear.brand
+                                                    } else {
+                                                        id == gear.id.toString()
+                                                    }
+                                                }
+
+                                                // 4. 수정된 로그 객체를 전체 맵에 다시 넣고 저장
+                                                val updatedLog = log.copy(
+                                                    gearIds = updatedGearIds,
+                                                    checkedGearIds = updatedCheckedIds
+                                                )
+                                                currentLogs[date] = updatedLog
+                                                saveCampLogs(context, currentLogs)
+
+                                                // 5. [중요] 화면을 담당하는 상태 변수를 업데이트해서 UI를 즉시 바꿉니다.
+                                                // 만약 상단에서 'allLogs'를 쓰기로 했다면 allLogs = currentLogs
+                                                // 'campLog'를 쓰고 있다면 campLog = updatedLog 를 해줍니다.
                                                 campLog = updatedLog
-                                                checkedGearIds = updatedCheckedIds.toSet()
+
+                                                Toast.makeText(context, "삭제되었습니다.", Toast.LENGTH_SHORT).show()
                                             }
                                         }) {
                                             Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color.LightGray)
@@ -248,29 +319,17 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp) // 버튼 사이 간격
+                    horizontalArrangement = Arrangement.spacedBy(4.dp) // 버튼 사이 간격
                 ) {
-                    // 1️⃣ 그룹 장비 추가 버튼
-                    Button(
-                        onClick = { showGroupPicker = true },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                    ) {
-                        Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("장비그룹 추가", fontSize = 14.sp)
+                    Button(onClick = { showGroupPicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                        Text("내장비그룹 추가", fontSize = 10.sp)
                     }
-
-                    // 2️⃣ 개별 장비 추가 버튼
-                    Button(
-                        onClick = { showIndividualPicker = true },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("장비개별 추가", fontSize = 14.sp)
+                    Button(onClick = { showIndividualPicker = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
+                        Text("내장비개별 추가", fontSize = 10.sp)
+                    }
+                    // 💡 3번 버튼: 직접 입력 추가
+                    Button(onClick = { showQuickAdd = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
+                        Text("미등록장비 추가", fontSize = 10.sp)
                     }
                 }
             }
@@ -321,4 +380,130 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
             }
         )
     }
+
+    // --- [CampingLogScreen.kt 내부 호출 부분] ---
+    if (showQuickAdd) {
+        QuickGearAddDialog(
+            onDismiss = { showQuickAdd = false },
+            onAddToList = { id ->
+                // 1. 전달받은 ID의 앞뒤 공백 제거 (매우 중요)
+                val cleanId = id.trim()
+
+                // 2. 상태값(campLog)에 의존하지 않고, 파일에서 직접 최신 로그를 읽어옵니다.
+                val allLogs = loadCampLogs(context).toMutableMap()
+                val currentLog = allLogs[date]
+
+                if (currentLog != null) {
+                    // 💡 디버깅용 로그 추가
+                    println("DEBUG: 추가하려는 ID -> '$cleanId'")
+                    println("DEBUG: 현재 리스트 상태 -> ${currentLog.gearIds}")
+
+                    // 3. 중복 체크: 문자열로 정확히 비교
+                    val isDuplicate = currentLog.gearIds.any { it.trim() == cleanId }
+
+                    if (!isDuplicate) {
+                        // 4. 중복이 아닐 때만 리스트에 추가하고 저장
+                        val updatedLog = currentLog.copy(gearIds = currentLog.gearIds + cleanId)
+                        allLogs[date] = updatedLog
+                        saveCampLogs(context, allLogs)
+
+                        // 5. 화면 UI 갱신 (상태값 업데이트)
+                        campLog = updatedLog
+
+                        Toast.makeText(context, "체크리스트에 추가되었습니다.", Toast.LENGTH_SHORT).show()
+                        showQuickAdd = false // 팝업 닫기
+                    } else {
+                        // 6. 진짜로 중복된 경우
+                        println("DEBUG: 중복 발생! 이미 리스트에 '$cleanId'가 있습니다.")
+                        Toast.makeText(context, "이미 체크리스트에 있는 장비입니다.", Toast.LENGTH_SHORT).show()
+                        // 중복이더라도 사용자가 팝업을 닫을 수 있게 하거나,
+                        // 창고 등록은 성공했으니 팝업을 유지할지 선택하게 합니다.
+                    }
+                }
+            },
+            onSaveToWarehouse = { b, m, c, memo ->
+                // 💡 [수정] UserGear의 모든 파라미터를 명시적으로 전달
+                val newGear = UserGear(
+                    category = c,
+                    brand = b,
+                    modelName = m,
+                    quantity = 1,
+                    memo = memo,
+                    isWinterOnly = false,
+                    isFirewoodUse = false,
+                    imageUrl = "",
+                    linkUrl = ""
+                )
+                val generatedId = gearDao.insertUserGear(newGear)
+                generatedId.toString()
+            }
+        )
+    }
+}
+
+@Composable
+fun QuickGearAddDialog(
+    onDismiss: () -> Unit,
+    onAddToList: (id: String) -> Unit,
+    onSaveToWarehouse: suspend (brand: String, model: String, category: String, memo: String) -> String
+) {
+    var brand by remember { mutableStateOf("") }
+    var model by remember { mutableStateOf("") }
+    var memo by remember { mutableStateOf("") } // 💡 메모 상태 추가
+    var selectedCategory by remember { mutableStateOf("기타") }
+    var isSavedToWarehouse by remember { mutableStateOf(false) }
+    var savedId by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    val categories = listOf("텐트", "타프", "체어", "테이블", "조명", "침구", "식기", "취사", "화로대", "기타")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isSavedToWarehouse) "저장 완료" else "장비 직접 입력", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!isSavedToWarehouse) {
+                    OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("브랜드") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("모델명") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("메모 (선택사항)") }, modifier = Modifier.fillMaxWidth())
+
+                    Text("카테고리", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(categories) { cat ->
+                            FilterChip(selected = selectedCategory == cat, onClick = { selectedCategory = cat }, label = { Text(cat) })
+                        }
+                    }
+                } else {
+                    Text("'${model}' 장비가 내 창고에 등록되었습니다.\n이 장비를 현재 체크리스트에도 추가할까요?")
+                }
+            }
+        },
+        confirmButton = {
+            if (!isSavedToWarehouse) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        // 리스트만 추가할 때는 구분자를 통해 임시 데이터 생성
+                        val tempId = "custom|$selectedCategory|$brand|$model|1|$memo"
+                        onAddToList(tempId)
+                    }) { Text("리스트만 추가") }
+
+                    Button(onClick = {
+                        scope.launch {
+                            // 💡 [수정] 결과를 변수에 직접 받아서 상태를 업데이트합니다.
+                            val resultId = onSaveToWarehouse(brand, model, selectedCategory, memo)
+                            if (resultId.isNotBlank()) {
+                                savedId = resultId
+                                isSavedToWarehouse = true
+                            }
+                        }
+                    }) { Text("내 장비 등록") }
+                }
+            } else {
+                Button(onClick = { onAddToList(savedId) }) { Text("체크리스트 추가") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(if (isSavedToWarehouse) "닫기" else "취소") }
+        }
+    )
 }

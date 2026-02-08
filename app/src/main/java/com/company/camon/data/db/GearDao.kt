@@ -22,7 +22,7 @@ interface GearDao {
 
     // 3. 내 장비 저장 (기획안 7단계: 완료 버튼 클릭 시)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertUserGear(gear: UserGear)
+    suspend fun insertUserGear(gear: UserGear): Long // 👈 반드시 : Long을 추가해야 ID가 반환됩니다!
 
     // 4. 내 장비 목록 전체 가져오기 (최신순)
     @Query("SELECT * FROM user_gear ORDER BY createdAt DESC")

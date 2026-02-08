@@ -366,49 +366,67 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                                     else -> "📦"     // 기존 기타(🛠️)를 박스 아이콘으로 변경하면 더 깔끔합니다.
                                 }
 
-                                ListItem(
-                                    headlineContent = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            // 💡 카테고리 태그(Surface)를 제거하고 이모지와 이름을 더 가깝게 배치
-                                            Text(emoji, fontSize = 20.sp)
-                                            Spacer(modifier = Modifier.width(12.dp))
-
-                                            // 장비 모델명
-                                            Text(
-                                                text = gear.modelName,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = if (isChecked) Color.Gray else Color.Unspecified,
-                                                textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
-                                                fontWeight = if (isChecked) FontWeight.Normal else FontWeight.SemiBold
-                                            )
-                                        }
-                                    },
-                                    supportingContent = {
-                                        // 💡 브랜드 정보를 한 줄 아래에 은은하게 배치 (여백을 이모지 크기에 맞춤)
-                                        Text(
-                                            text = "${gear.brand} | ${gear.category}",
-                                            fontSize = 12.sp,
-                                            color = Color.Gray,
-                                            modifier = Modifier.padding(start = 32.dp) // 이모지 뒤에 딱 맞게 정렬
-                                        )
-                                    },
-                                    leadingContent = {
+                                // 💡 [여기서부터 ListItem 대신 들어가는 압축형 Row]
+                                Column {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { toggleGearCheck(originalId, !isChecked) }
+                                            .padding(horizontal = 12.dp, vertical = 4.dp), // 패딩 대폭 축소
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 1. 체크박스
                                         Checkbox(
                                             checked = isChecked,
-                                            onCheckedChange = { toggleGearCheck(originalId, it) }
+                                            onCheckedChange = { toggleGearCheck(originalId, it) },
+                                            modifier = Modifier.size(32.dp) // 클릭 영역 확보
                                         )
-                                    },
-                                    // 💡 [핵심] 우측 삭제 버튼 추가
-                                    trailingContent = {
-                                        IconButton(onClick = {
-                                            // 💡 삭제 시에도 originalId만 있으면 복잡한 if문 없이 바로 filterNot 가능!
-                                            deleteGear(originalId)
-                                        }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color.LightGray)
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // 2. 이모지 + 이름 + 브랜드 (중앙 텍스트 영역)
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(emoji, fontSize = 16.sp)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = gear.modelName,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Bold,
+                                                    color = if (isChecked) Color.Gray else Color.Unspecified,
+                                                    style = androidx.compose.ui.text.TextStyle(
+                                                        textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                                    )
+                                                )
+                                            }
+                                            Text(
+                                                text = "${gear.brand} | ${gear.category}",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray,
+                                                modifier = Modifier.padding(start = 24.dp) // 이모지 너비만큼 밀어줌
+                                            )
                                         }
-                                    },
-                                    modifier = Modifier.clickable { toggleGearCheck(originalId, !isChecked) }
-                                )
+
+                                        // 3. 삭제 버튼 (작고 깔끔하게 유지)
+                                        IconButton(
+                                            onClick = { deleteGear(originalId) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "삭제",
+                                                tint = Color.LightGray.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    // 💡 얇은 구분선 (항목 간 경계 명확화)
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        thickness = 0.5.dp,
+                                        color = Color.LightGray.copy(alpha = 0.2f)
+                                    )
+                                }
                             }
                         }
                     }

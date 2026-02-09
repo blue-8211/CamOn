@@ -270,6 +270,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     selectedDate = LocalDate.now()
                     // 💡 [추가] 오늘 버튼 클릭 시 달력을 맨 앞(오늘)으로 스크롤
                     isEditing = false // 👈 오늘로 돌아갈 때도 수정 모드 해제!
+                    selectedGearIds = emptySet() // 💡 초기화 추가
+                    locationInput = ""           // 💡 초기화 추가
                     scope.launch {
                         // 💡 [수정] 0번이 아니라 오늘 날짜인 180번 인덱스로 이동
                         // 약간의 여유를 위해 179번 정도로 보내면 오늘 날짜가 더 잘 보입니다.
@@ -298,6 +300,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         ) { newDate -> // 💡 날짜가 선택되었을 때 실행되는 블록
             selectedDate = newDate
             isEditing = false // 👈 여기서 수정 모드를 해제합니다!
+            // 💡 [추가] 날짜를 옮기면 이전 날짜에서 작업하던 장비 리스트를 비웁니다.
+            selectedGearIds = emptySet()
+            locationInput = "" // 장소 입력값도 같이 비워주는 게 깔끔합니다.
         }
         Spacer(modifier = Modifier.height(12.dp))
         Card(
@@ -440,7 +445,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
+                    /*
                     // 💡 [장비 선택 섹션] 그룹추가 & 개별추가 버튼
                     // 💡 수정 모드(isEditing)가 아닐 때만 이 섹션을 보여줍니다.
                     if (!isEditing) {
@@ -462,7 +467,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                             }
                         }
                     }
-
+                    */
                     // 저장 및 공개 설정 로우
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -481,15 +486,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                 val isLocationChanged = existingLog?.location != locationInput
                                 // (필요하다면 공개여부나 장비 리스트 변경 여부도 체크 가능)
 
-                                if (!isLocationChanged) {
-                                    // 1. 장소가 그대로라면? 아무 작업 안 하고 그냥 수정 모드만 종료!
-                                    isEditing = false
-                                    locationInput = "" // 입력값 초기화
-                                    selectedGearIds = emptySet()
-                                    // Toast.makeText(context, "변경된 내용이 없어 그대로 유지합니다.", Toast.LENGTH_SHORT).show()
-                                }else {
-                                    // 2. 장소가 바뀌었다면? (신규 등록이거나 실제 변경인 경우)
-                                    // 이때는 기존 로직대로 저장 (단, 체크 내역은 보존)
+                                if (!isEditing) {
+                                    // ✅ [신규 등록 케이스] 저장 후 바로 짐 싸기 화면으로!
                                     val newLog = CampLog(
                                         date = selectedDate.toString(),
                                         location = locationInput,
@@ -497,18 +495,47 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                         mapx = selectedSearchItem?.mapx ?: "",
                                         mapy = selectedSearchItem?.mapy ?: "",
                                         isPublic = isPublic,
-                                        gearIds = selectedGearIds.toList() // 선택된 모든 장비 ID 저장
+                                        gearIds = selectedGearIds.toList()
                                     )
                                     val currentLogs = loadCampLogs(context).toMutableMap()
                                     currentLogs[selectedDate.toString()] = newLog
                                     saveCampLogs(context, currentLogs)
+                                    campLogs = currentLogs
 
-                                    campLogs = currentLogs // UI 즉시 갱신
+                                    // 입력창 초기화 및 이동
                                     locationInput = ""
                                     selectedGearIds = emptySet()
-                                    isEditing = false // 👈 수정 완료 후 카드 뷰로 복귀
-                                    Toast.makeText(context, "기록 저장 완료! ⛺", Toast.LENGTH_SHORT)
-                                        .show()
+                                    onNavigateToLog(selectedDate.toString()) // 🚀 즉시 이동!
+                                } else {
+                                    if (!isLocationChanged) {
+                                        // 1. 장소가 그대로라면? 아무 작업 안 하고 그냥 수정 모드만 종료!
+                                        isEditing = false
+                                        locationInput = "" // 입력값 초기화
+                                        selectedGearIds = emptySet()
+                                        // Toast.makeText(context, "변경된 내용이 없어 그대로 유지합니다.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        // 2. 장소가 바뀌었다면? (신규 등록이거나 실제 변경인 경우)
+                                        // 이때는 기존 로직대로 저장 (단, 체크 내역은 보존)
+                                        val newLog = CampLog(
+                                            date = selectedDate.toString(),
+                                            location = locationInput,
+                                            address = selectedSearchItem?.address ?: "",
+                                            mapx = selectedSearchItem?.mapx ?: "",
+                                            mapy = selectedSearchItem?.mapy ?: "",
+                                            isPublic = isPublic,
+                                            gearIds = selectedGearIds.toList() // 선택된 모든 장비 ID 저장
+                                        )
+                                        val currentLogs = loadCampLogs(context).toMutableMap()
+                                        currentLogs[selectedDate.toString()] = newLog
+                                        saveCampLogs(context, currentLogs)
+
+                                        campLogs = currentLogs // UI 즉시 갱신
+                                        locationInput = ""
+                                        selectedGearIds = emptySet()
+                                        isEditing = false // 👈 수정 완료 후 카드 뷰로 복귀
+                                        Toast.makeText(context, "수정되었습니다.", Toast.LENGTH_SHORT)
+                                            .show()
+                                    }
                                 }
                             }
                         }) { Text("저장") }

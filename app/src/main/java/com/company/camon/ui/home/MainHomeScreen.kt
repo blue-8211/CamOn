@@ -59,6 +59,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     val allGear by gearDao.getAllUserGears().collectAsState(initial = emptyList())
     var selectedGearIds by remember { mutableStateOf(setOf<String>()) } // 현재 선택된 장비 ID들 (중복방지 Set)
 
+    // --- [상태 관리 변수 영역] ---
+    var isEditing by remember { mutableStateOf(false) } // 💡 수정 모드 여부 추가
+
     // --- 3. 다이얼로그 제어 상태 ---
     var showGroupPicker by remember { mutableStateOf(false) }      // 그룹 선택 창 열림 여부
     var showIndividualPicker by remember { mutableStateOf(false) } // 개별 장비 선택 창 열림 여부
@@ -69,6 +72,77 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     var mapTargetLocation by remember { mutableStateOf("") }
     var selectedSearchItem by remember { mutableStateOf<SearchResultItem?>(null) }
     var searchResults by remember { mutableStateOf<List<SearchResultItem>>(emptyList()) }
+
+    var showLocationConfirm by remember { mutableStateOf(false) } // 다이얼로그 노출 여부
+    var pendingItem by remember { mutableStateOf<SearchResultItem?>(null) } // 잠시 담아둘 아이템
+
+    val currentLog = campLogs[selectedDate.toString()] // 💡 여기서 먼저 정의!
+
+    var showDetailNotice by remember { mutableStateOf(false) }
+
+    // 💡 1. 장소 변경 확인 다이얼로그
+    if (showLocationConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLocationConfirm = false },
+            title = { Text("장소 변경 확인", fontWeight = FontWeight.Bold) },
+            text = { Text("장소를 변경하면 지금까지 체크한 장비 내역이 모두 초기화됩니다. 정말 변경하시겠습니까?") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    onClick = {
+                        pendingItem?.let { item ->
+                            // 💡 이제야 실제 입력 필드들을 업데이트합니다.
+                            val cleanTitle = item.title.replace("<b>", "").replace("</b>", "")
+                            locationInput = cleanTitle
+                            selectedSearchItem = item
+
+                            // 2. 💡 즉시 파일 저장 로직 수행
+                            currentLog?.let { log ->
+                                // 장소 정보와 체크 내역(비우기)을 한꺼번에 업데이트
+                                val updatedLog = log.copy(
+                                    location = cleanTitle,
+                                    address = item.address,
+                                    mapx = item.mapx,
+                                    mapy = item.mapy,
+                                    checkedGearIds = emptyList() // 체크 내역 초기화
+                                )
+
+                                val tempLogs = campLogs.toMutableMap()
+                                tempLogs[selectedDate.toString()] = updatedLog
+
+                                // 파일에 물리적으로 저장
+                                saveCampLogs(context, tempLogs)
+
+                                // 메모리(State)에도 반영
+                                campLogs = tempLogs
+                            }
+                        }
+                        // 3. 💡 [중요] 저장까지 끝났으니 바로 수정 모드 탈출!
+                        isEditing = false
+                        searchResults = emptyList()
+                        showLocationConfirm = false
+                    }
+                ) {
+                    Text("변경 및 초기화", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showLocationConfirm = false
+                    pendingItem = null
+
+                    // 💡 핵심: 취소를 누르면 수정 모드를 종료하고 조회(카드) 모드로 돌아갑니다.
+                    if (isEditing) {
+                        isEditing = false
+                        // 원래 장소명으로 복구 (저장 버튼을 안 눌러도 화면을 깔끔하게 유지하기 위함)
+                        locationInput = currentLog?.location ?: ""
+                    }
+
+                    searchResults = emptyList() // 드롭다운도 닫기
+                }) { Text("취소") }
+            }
+        )
+    }
 
     // [다이얼로그] 지도 보기
     if (showMap) {
@@ -109,6 +183,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     var tempMin by remember { mutableStateOf("-") }
     var windMax by remember { mutableStateOf("-") }
     var windMin by remember { mutableStateOf("-") }
+
 
     // [수정] 앱 실행 시 딱 한 번만 오늘 날짜로 이동
     LaunchedEffect(Unit) {
@@ -194,6 +269,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 onClick = {
                     selectedDate = LocalDate.now()
                     // 💡 [추가] 오늘 버튼 클릭 시 달력을 맨 앞(오늘)으로 스크롤
+                    isEditing = false // 👈 오늘로 돌아갈 때도 수정 모드 해제!
                     scope.launch {
                         // 💡 [수정] 0번이 아니라 오늘 날짜인 180번 인덱스로 이동
                         // 약간의 여유를 위해 179번 정도로 보내면 오늘 날짜가 더 잘 보입니다.
@@ -219,8 +295,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             selectedDate = selectedDate,
             hasLogDates = campLogs.keys,
             listState = calendarListState // state 전달
-        ) {
-            selectedDate = it
+        ) { newDate -> // 💡 날짜가 선택되었을 때 실행되는 블록
+            selectedDate = newDate
+            isEditing = false // 👈 여기서 수정 모드를 해제합니다!
         }
         Spacer(modifier = Modifier.height(12.dp))
         Card(
@@ -284,9 +361,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
         val currentLog = campLogs[selectedDate.toString()]
 
-        if (currentLog == null) {
+        // 💡 기록이 없거나, 수정 버튼을 눌렀을 때 '입력창'을 보여줌
+        if (currentLog == null || isEditing) {
             Text(
-                "${selectedDate}의 캠핑 기록",
+                text = if (isEditing) "${selectedDate} 기록 수정" else "${selectedDate}의 캠핑 기록",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -294,6 +372,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             // --- 입력 카드 영역 ---
             Card(
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
                         alpha = 0.5f
@@ -340,9 +419,20 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                         )
                                     },
                                     onClick = {
-                                        locationInput = cleanTitle
-                                        selectedSearchItem = item
-                                        searchResults = emptyList()
+                                        val cleanTitle = item.title.replace("<b>", "").replace("</b>", "")
+                                        val hasChecked = currentLog?.checkedGearIds?.isNotEmpty() == true
+
+                                        if (isEditing && hasChecked) {
+                                            // 💡 중요: 여기서는 입력 필드(locationInput 등)를 절대 건드리지 않습니다.
+                                            // 대신 "바꿀 녀석" 정보만 pendingItem에 보관하고 팝업을 띄웁니다.
+                                            pendingItem = item
+                                            showLocationConfirm = true
+                                        } else {
+                                            // 체크된 게 없을 때는 즉시 변경해도 무방합니다.
+                                            locationInput = cleanTitle
+                                            selectedSearchItem = item
+                                            searchResults = emptyList()
+                                        }
                                     }
                                 )
                             }
@@ -352,21 +442,24 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // 💡 [장비 선택 섹션] 그룹추가 & 개별추가 버튼
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "🎒 장비 세팅: ${selectedGearIds.size}개",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
+                    // 💡 수정 모드(isEditing)가 아닐 때만 이 섹션을 보여줍니다.
+                    if (!isEditing) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "🎒 장비 세팅: ${selectedGearIds.size}개",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
 
-                        // 그룹으로 불러오기 버튼
-                        TextButton(onClick = { showGroupPicker = true }) {
-                            Text("그룹 추가", fontSize = 12.sp)
-                        }
-                        // 개별로 하나씩 추가 버튼
-                        TextButton(onClick = { showIndividualPicker = true }) {
-                            Text("개별 추가", fontSize = 12.sp)
+                            // 그룹으로 불러오기 버튼
+                            TextButton(onClick = { showGroupPicker = true }) {
+                                Text("그룹 추가", fontSize = 12.sp)
+                            }
+                            // 개별로 하나씩 추가 버튼
+                            TextButton(onClick = { showIndividualPicker = true }) {
+                                Text("개별 추가", fontSize = 12.sp)
+                            }
                         }
                     }
 
@@ -382,23 +475,41 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         }
                         Button(onClick = {
                             if (locationInput.isNotBlank()) {
-                                val newLog = CampLog(
-                                    date = selectedDate.toString(),
-                                    location = locationInput,
-                                    address = selectedSearchItem?.address ?: "",
-                                    mapx = selectedSearchItem?.mapx ?: "",
-                                    mapy = selectedSearchItem?.mapy ?: "",
-                                    isPublic = isPublic,
-                                    gearIds = selectedGearIds.toList() // 선택된 모든 장비 ID 저장
-                                )
-                                val currentLogs = loadCampLogs(context).toMutableMap()
-                                currentLogs[selectedDate.toString()] = newLog
-                                saveCampLogs(context, currentLogs)
+                                val existingLog = campLogs[selectedDate.toString()]
 
-                                campLogs = currentLogs // UI 즉시 갱신
-                                locationInput = ""
-                                selectedGearIds = emptySet()
-                                Toast.makeText(context, "기록 저장 완료! ⛺", Toast.LENGTH_SHORT).show()
+                                // 💡 [핵심 체크] 장소나 다른 주요 정보가 바뀌었는지 확인
+                                val isLocationChanged = existingLog?.location != locationInput
+                                // (필요하다면 공개여부나 장비 리스트 변경 여부도 체크 가능)
+
+                                if (!isLocationChanged) {
+                                    // 1. 장소가 그대로라면? 아무 작업 안 하고 그냥 수정 모드만 종료!
+                                    isEditing = false
+                                    locationInput = "" // 입력값 초기화
+                                    selectedGearIds = emptySet()
+                                    // Toast.makeText(context, "변경된 내용이 없어 그대로 유지합니다.", Toast.LENGTH_SHORT).show()
+                                }else {
+                                    // 2. 장소가 바뀌었다면? (신규 등록이거나 실제 변경인 경우)
+                                    // 이때는 기존 로직대로 저장 (단, 체크 내역은 보존)
+                                    val newLog = CampLog(
+                                        date = selectedDate.toString(),
+                                        location = locationInput,
+                                        address = selectedSearchItem?.address ?: "",
+                                        mapx = selectedSearchItem?.mapx ?: "",
+                                        mapy = selectedSearchItem?.mapy ?: "",
+                                        isPublic = isPublic,
+                                        gearIds = selectedGearIds.toList() // 선택된 모든 장비 ID 저장
+                                    )
+                                    val currentLogs = loadCampLogs(context).toMutableMap()
+                                    currentLogs[selectedDate.toString()] = newLog
+                                    saveCampLogs(context, currentLogs)
+
+                                    campLogs = currentLogs // UI 즉시 갱신
+                                    locationInput = ""
+                                    selectedGearIds = emptySet()
+                                    isEditing = false // 👈 수정 완료 후 카드 뷰로 복귀
+                                    Toast.makeText(context, "기록 저장 완료! ⛺", Toast.LENGTH_SHORT)
+                                        .show()
+                                }
                             }
                         }) { Text("저장") }
                     }
@@ -435,9 +546,13 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         )
 
                         // 3. 핵심: campLogs에서 이 날짜를 잠시 제거하여 '등록 모드(if)'가 화면에 나오게 함
+                        /*
                         val tempLogs = campLogs.toMutableMap()
                         tempLogs.remove(selectedDate.toString())
                         campLogs = tempLogs
+                        */
+                        // 2. 💡 화면 전환 (삭제하지 않고 상태만 변경)
+                        isEditing = true
 
                         Toast.makeText(context, "수정 모드입니다. 내용을 고친 후 다시 저장해주세요.", Toast.LENGTH_SHORT).show()
                     }
@@ -457,7 +572,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigateToLog(currentLog.date) }, // 카드 클릭 시 짐 싸기 화면으로 이동
+                    .clickable { showDetailNotice = true }, // 💡 팝업 띄우기
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     // 완료 여부에 따라 배경색을 다르게 줌 (완료 시 연한 초록)
@@ -527,108 +642,148 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     // 💡 [내 장비 등록 장비 처리] DB에서 찾기
                     allGear.find { it.id.toString() == id.trim() }
                 }
-            }
+            }.sortedWith(
+                compareBy<com.company.camon.data.model.UserGear> { gear ->
+                    // 전체 리스트의 정렬 기준인 '단일 품목 우선'을 위해 전체 장비 중 카테고리 개수 파악
+                    val isSingleInInternal = allGear.count { it.category == gear.category } == 1
+                    if (isSingleInInternal) 0 else 1 // 단일 품목이면 0(앞), 아니면 1(뒤)
+                }.thenBy { it.category }  // 그 다음 카테고리 가나다순
+                    .thenBy { it.modelName } // 그 다음 모델명 가나다순
+            )
 
             if (remainingGear.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "💡 잊으신 건 없나요?",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.Gray
-                )
+                // 헤더 영역: 제목 + 전체보기 버튼
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "💡 잊으신 건 없나요?",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.Gray
+                    )
+                    // 💡 [추가] 전체 체크리스트로 이동하는 버튼 (여기서 짐 싸기 화면으로!)
+                    TextButton(
+                        onClick = { onNavigateToLog(log.date) },
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text("전체보기", fontSize = 12.sp)
+                        Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(16.dp))
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 최대 4개까지만 미리보기로 보여줌
-                remainingGear.take(4).forEach { gear ->
-                    // 💡 카테고리에 따른 이모지 결정 로직 추가
-                    val emoji = when(gear.category) {
-                        "텐트" -> "⛺"
-                        "타프" -> "⛱️"
-                        "체어" -> "💺"
-                        "테이블" -> "🪑"
-                        "조명" -> "💡"
-                        "침구" -> "🛌"
-                        "취사" -> "🍳"
-                        "화로대" -> "🔥"
-                        "도구" -> "🧰"    // 💡 도구 전용 이모지 추가
-                        "소모품" -> "🛒"  // 💡 소모품 전용 이모지 추가
-                        else -> "📦"     // 기존 기타(🛠️)를 박스 아이콘으로 변경하면 더 깔끔합니다.
-                    }
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
+                Box(modifier = Modifier.heightIn(max = 300.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 💡 기존 Inventory 아이콘 대신 이모지 텍스트를 넣습니다.
-                            Text(emoji, fontSize = 18.sp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            // 브랜드와 모델명 표시
-                            Text(
-                                text = "${gear.brand} ${gear.modelName}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
-
-                            // 💡 여기서 바로 체크하는 기능 (옵션)
-                            IconButton(
-                                onClick = {
-                                    // 1. 현재 로그를 안전하게 가져옵니다.
-                                    val currentLogData = campLogs[selectedDate.toString()]
-
-                                    currentLogData?.let { log ->
-                                        // 2. [핵심] 직접 입력 장비인지 확인하여 원본 ID(custom|...)를 찾습니다.
-                                        val originalId = log.gearIds.find { id ->
-                                            if (id.startsWith("custom|")) {
-                                                val parts = id.split("|")
-                                                // 모델명과 브랜드가 일치하는지 확인
-                                                parts.getOrNull(3) == gear.modelName && parts.getOrNull(2) == gear.brand
-                                            } else {
-                                                // 일반 장비는 숫자 ID 그대로 비교
-                                                id == gear.id.toString()
-                                            }
-                                        } ?: ""
-
-                                        if (originalId.isNotEmpty()) {
-                                            val updatedChecked = log.checkedGearIds + originalId // 원본 문자열 저장!
-                                            val newLog = log.copy(checkedGearIds = updatedChecked)
-                                            val updatedLogs = campLogs.toMutableMap()
-                                            updatedLogs[selectedDate.toString()] = newLog
-                                            saveCampLogs(context, updatedLogs)
-                                            campLogs = updatedLogs
-                                        }
-
-                                        // 3. 찾은 진짜 ID로 체크리스트 업데이트
-                                        val updatedChecked = log.checkedGearIds + originalId
-                                        val newLog = log.copy(checkedGearIds = updatedChecked)
-
-                                        val updatedLogs = campLogs.toMutableMap()
-                                        updatedLogs[selectedDate.toString()] = newLog
-                                        saveCampLogs(context, updatedLogs)
-
-                                        // 4. UI 즉시 반영
-                                        campLogs = updatedLogs
-                                        Toast.makeText(context, "장비를 챙겼습니다! 🎒", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.RadioButtonUnchecked,
-                                    null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                        items(remainingGear) { gear ->
+                            // 💡 카테고리에 따른 이모지 결정 로직 추가
+                            val emoji = when (gear.category) {
+                                "텐트" -> "⛺"
+                                "타프" -> "⛱️"
+                                "체어" -> "💺"
+                                "테이블" -> "🪑"
+                                "조명" -> "💡"
+                                "침구" -> "🛌"
+                                "취사" -> "🍳"
+                                "화로대" -> "🔥"
+                                "도구" -> "🧰"    // 💡 도구 전용 이모지 추가
+                                "소모품" -> "🛒"  // 💡 소모품 전용 이모지 추가
+                                else -> "📦"     // 기존 기타(🛠️)를 박스 아이콘으로 변경하면 더 깔끔합니다.
+                            }
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                 )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(
+                                        horizontal = 12.dp,
+                                        vertical = 8.dp
+                                    ),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 💡 기존 Inventory 아이콘 대신 이모지 텍스트를 넣습니다.
+                                    Text(emoji, fontSize = 18.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    // 브랜드와 모델명 표시
+                                    Text(
+                                        text = "${gear.brand} ${gear.modelName}",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.weight(1f))
+
+                                    // 💡 여기서 바로 체크하는 기능 (옵션)
+                                    IconButton(
+                                        onClick = {
+                                            // 1. 현재 로그를 안전하게 가져옵니다.
+                                            val currentLogData = campLogs[selectedDate.toString()]
+
+                                            currentLogData?.let { log ->
+                                                // 2. [핵심] 직접 입력 장비인지 확인하여 원본 ID(custom|...)를 찾습니다.
+                                                val originalId = log.gearIds.find { id ->
+                                                    if (id.startsWith("custom|")) {
+                                                        val parts = id.split("|")
+                                                        // 모델명과 브랜드가 일치하는지 확인
+                                                        parts.getOrNull(3) == gear.modelName && parts.getOrNull(
+                                                            2
+                                                        ) == gear.brand
+                                                    } else {
+                                                        // 일반 장비는 숫자 ID 그대로 비교
+                                                        id == gear.id.toString()
+                                                    }
+                                                } ?: ""
+
+                                                if (originalId.isNotEmpty()) {
+                                                    val updatedChecked =
+                                                        log.checkedGearIds + originalId // 원본 문자열 저장!
+                                                    val newLog =
+                                                        log.copy(checkedGearIds = updatedChecked)
+                                                    val updatedLogs = campLogs.toMutableMap()
+                                                    updatedLogs[selectedDate.toString()] = newLog
+                                                    saveCampLogs(context, updatedLogs)
+                                                    campLogs = updatedLogs
+                                                }
+
+                                                // 3. 찾은 진짜 ID로 체크리스트 업데이트
+                                                val updatedChecked = log.checkedGearIds + originalId
+                                                val newLog =
+                                                    log.copy(checkedGearIds = updatedChecked)
+
+                                                val updatedLogs = campLogs.toMutableMap()
+                                                updatedLogs[selectedDate.toString()] = newLog
+                                                saveCampLogs(context, updatedLogs)
+
+                                                // 4. UI 즉시 반영
+                                                campLogs = updatedLogs
+                                                Toast.makeText(
+                                                    context,
+                                                    "장비를 챙겼습니다! 🎒",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.RadioButtonUnchecked,
+                                            null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -682,6 +837,18 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 Toast.makeText(context, "${gear.modelName} 선택됨", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showIndividualPicker = false }
+        )
+    }
+
+    // 화면 하단에 다이얼로그 추가
+    if (showDetailNotice) {
+        AlertDialog(
+            onDismissRequest = { showDetailNotice = false },
+            title = { Text("준비 중인 기능") },
+            text = { Text("캠핑장 상세 정보 서비스는 현재 준비 중입니다. 조금만 기다려 주세요! ⛺") },
+            confirmButton = {
+                TextButton(onClick = { showDetailNotice = false }) { Text("확인") }
+            }
         )
     }
 }
@@ -749,3 +916,4 @@ fun WeeklyCalendar(
         }
     }
 }
+

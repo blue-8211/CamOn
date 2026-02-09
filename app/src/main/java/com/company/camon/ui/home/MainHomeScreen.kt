@@ -184,6 +184,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     var windMax by remember { mutableStateOf("-") }
     var windMin by remember { mutableStateOf("-") }
 
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     // [수정] 앱 실행 시 딱 한 번만 오늘 날짜로 이동
     LaunchedEffect(Unit) {
@@ -555,36 +556,44 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     fontWeight = FontWeight.Bold
                 )
 
-                // 💡 수정 버튼 추가
-                TextButton(
-                    onClick = {
-                        // 1. 현재 저장된 기록의 내용을 입력 필드 상태값들에 다시 채워넣음
-                        locationInput = currentLog.location
-                        selectedGearIds = currentLog.gearIds.toSet()
-                        isPublic = currentLog.isPublic
+                Row { // 💡 수정과 삭제 버튼을 나란히 배치
+                    // 💡 수정 버튼 추가
+                    TextButton(
+                        onClick = {
+                            // 1. 현재 저장된 기록의 내용을 입력 필드 상태값들에 다시 채워넣음
+                            locationInput = currentLog.location
+                            selectedGearIds = currentLog.gearIds.toSet()
+                            isPublic = currentLog.isPublic
 
-                        // 2. 날씨 연동을 위해 검색 아이템 정보도 복구
-                        selectedSearchItem = SearchResultItem(
-                            title = currentLog.location,
-                            address = currentLog.address,
-                            roadAddress = currentLog.address,
-                            mapx = currentLog.mapx,
-                            mapy = currentLog.mapy
-                        )
+                            // 2. 날씨 연동을 위해 검색 아이템 정보도 복구
+                            selectedSearchItem = SearchResultItem(
+                                title = currentLog.location,
+                                address = currentLog.address,
+                                roadAddress = currentLog.address,
+                                mapx = currentLog.mapx,
+                                mapy = currentLog.mapy
+                            )
 
-                        // 3. 핵심: campLogs에서 이 날짜를 잠시 제거하여 '등록 모드(if)'가 화면에 나오게 함
-                        /*
-                        val tempLogs = campLogs.toMutableMap()
-                        tempLogs.remove(selectedDate.toString())
-                        campLogs = tempLogs
-                        */
-                        // 2. 💡 화면 전환 (삭제하지 않고 상태만 변경)
-                        isEditing = true
+                            // 3. 핵심: campLogs에서 이 날짜를 잠시 제거하여 '등록 모드(if)'가 화면에 나오게 함
+                            /*
+                            val tempLogs = campLogs.toMutableMap()
+                            tempLogs.remove(selectedDate.toString())
+                            campLogs = tempLogs
+                            */
+                            // 2. 💡 화면 전환 (삭제하지 않고 상태만 변경)
+                            isEditing = true
 
-                        Toast.makeText(context, "수정 모드입니다. 내용을 고친 후 다시 저장해주세요.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "수정 모드입니다. 내용을 고친 후 다시 저장해주세요.", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text("기록 수정", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     }
-                ) {
-                    Text("기록 수정", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+
+                    TextButton(
+                        onClick = { showDeleteConfirm = true } // 💡 삭제 확인 팝업 띄우기
+                    ) {
+                        Text("삭제", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
 
@@ -875,6 +884,38 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             text = { Text("캠핑장 상세 정보 서비스는 현재 준비 중입니다. 조금만 기다려 주세요! ⛺") },
             confirmButton = {
                 TextButton(onClick = { showDetailNotice = false }) { Text("확인") }
+            }
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("기록 삭제", fontWeight = FontWeight.Bold) },
+            text = { Text("${selectedDate}의 캠핑 기록을 삭제하시겠습니까?\n삭제된 내용은 복구할 수 없습니다.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // 1. 파일에서 해당 날짜 삭제
+                        val currentLogs = loadCampLogs(context).toMutableMap()
+                        currentLogs.remove(selectedDate.toString())
+                        saveCampLogs(context, currentLogs)
+
+                        // 2. 메모리 상태 업데이트
+                        campLogs = currentLogs
+                        showDeleteConfirm = false
+
+                        Toast.makeText(context, "기록이 삭제되었습니다.", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("취소")
+                }
             }
         )
     }

@@ -37,7 +37,13 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.*
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.rememberDateRangePickerState
+import java.time.temporal.ChronoUnit
+import java.time.Instant
+import java.time.ZoneId
 
+@OptIn(ExperimentalMaterial3Api::class) // 💡 이 줄을 추가하세요!
 @Composable
 fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherApi: WeatherApiService) {
     // --- 1. 상태 관리 변수들 ---
@@ -46,6 +52,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
     var isPublic by remember { mutableStateOf(false) } // 공개/비공개 스위치
     var campLogs by remember { mutableStateOf(loadCampLogs(context)) } // 전체 캠핑 로그 데이터
     val scope = rememberCoroutineScope()
+    // --- [상태 관리 변수 영역] ---
+    var showDateRangePicker by remember { mutableStateOf(false) }
 
     // 💡 [추가] 달력 스크롤 제어를 위한 상태
     val calendarListState = rememberLazyListState()
@@ -203,6 +211,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         }.toSet()
     }
 
+
     // [수정] 앱 실행 시 딱 한 번만 오늘 날짜로 이동
     LaunchedEffect(Unit) {
         calendarListState.scrollToItem(180)
@@ -248,11 +257,14 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         apiKey = "27146ed0cf8609bb6f532dcd87488c8c"
                     )
 
-                    val dailyData = response.list.filter { it.dt_txt.startsWith(selectedDate.toString()) }
+                    val dailyData =
+                        response.list.filter { it.dt_txt.startsWith(selectedDate.toString()) }
 
                     if (dailyData.isNotEmpty()) {
-                        tempMax = (dailyData.maxOfOrNull { it.main.temp_max } ?: 0.0).toInt().toString()
-                        tempMin = (dailyData.minOfOrNull { it.main.temp_min } ?: 0.0).toInt().toString()
+                        tempMax =
+                            (dailyData.maxOfOrNull { it.main.temp_max } ?: 0.0).toInt().toString()
+                        tempMin =
+                            (dailyData.minOfOrNull { it.main.temp_min } ?: 0.0).toInt().toString()
                         windMax = (dailyData.maxOfOrNull { it.wind.speed } ?: 0.0).toString()
                     } else {
                         tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
@@ -273,7 +285,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
-        ){
+        ) {
             Text(
                 text = "${currentViewDate.value.year}년 ${currentViewDate.value.monthValue}월",
                 style = MaterialTheme.typography.titleMedium,
@@ -326,7 +338,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant
+            )
         ) {
             Row(
                 modifier = Modifier
@@ -356,7 +371,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 }
 
                 // 구분선
-                Box(modifier = Modifier.width(1.dp).height(30.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                Box(
+                    modifier = Modifier.width(1.dp).height(30.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
 
                 // 풍속 정보
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -442,8 +460,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                         )
                                     },
                                     onClick = {
-                                        val cleanTitle = item.title.replace("<b>", "").replace("</b>", "")
-                                        val hasChecked = currentLog?.checkedGearIds?.isNotEmpty() == true
+                                        val cleanTitle =
+                                            item.title.replace("<b>", "").replace("</b>", "")
+                                        val hasChecked =
+                                            currentLog?.checkedGearIds?.isNotEmpty() == true
 
                                         if (isEditing && hasChecked) {
                                             // 💡 중요: 여기서는 입력 필드(locationInput 등)를 절대 건드리지 않습니다.
@@ -466,7 +486,11 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("기간", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "기간",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
                             Spacer(modifier = Modifier.width(12.dp))
 
                             // 당일, 1박, 2박 칩
@@ -484,11 +508,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                 )
                             }
 
-                            // 직접 선택 (일단 버튼만)
                             FilterChip(
                                 selected = nights >= 3,
-                                onClick = { /* TODO: 직접 선택 팝업 */ },
-                                label = { Text("직접") }
+                                onClick = { showDateRangePicker = true }, // 💡 팝업 열기
+                                label = { Text(if (nights >= 3) "${nights}박" else "직접") }
                             )
                         }
 
@@ -544,73 +567,101 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         }
                         Button(onClick = {
                             if (locationInput.isNotBlank()) {
-                                //val existingLog = campLogs[selectedDate.toString()]
+                                val currentLogs = loadCampLogs(context)
 
-                                // 💡 [핵심 체크] 장소나 다른 주요 정보가 바뀌었는지 확인
-                                val isLocationChanged = currentLog?.location != locationInput
-                                // (필요하다면 공개여부나 장비 리스트 변경 여부도 체크 가능)
+                                // 💡 1. 현재 내가 선택한 기간 계산
+                                val newStart = selectedDate
+                                val newEnd = selectedDate.plusDays(nights.toLong())
 
-                                if (!isEditing) {
-                                    // ✅ [신규 등록 케이스] 저장 후 바로 짐 싸기 화면으로!
-                                    val newLog = CampLog(
-                                        startDate = selectedDate.toString(), // 선택된 날이 시작일이 됨
-                                        nights = nights,
-                                        location = locationInput,
-                                        address = selectedSearchItem?.address ?: "",
-                                        mapx = selectedSearchItem?.mapx ?: "",
-                                        mapy = selectedSearchItem?.mapy ?: "",
-                                        isPublic = isPublic,
-                                        gearIds = selectedGearIds.toList()
-                                    )
-                                    val currentLogs = loadCampLogs(context).toMutableMap()
-                                    currentLogs[newLog.startDate] = newLog
-                                    saveCampLogs(context, currentLogs)
-                                    campLogs = currentLogs
+                                // 💡 2. 기존 로그들과 겹치는지 검사
+                                // 수정 모드일 때는 자기 자신(기존 로그)은 제외하고 검사해야 합니다.
+                                val isOverlapping = currentLogs.values.any { log ->
+                                    val existingStart = LocalDate.parse(log.startDate)
+                                    val existingEnd = existingStart.plusDays(log.nights.toLong())
 
-                                    // 입력창 초기화 및 이동
-                                    locationInput = ""
-                                    selectedGearIds = emptySet()
-                                    onNavigateToLog(newLog.startDate)
+                                    // 수정 모드인 경우 현재 수정 중인 로그의 원래 시작일은 제외
+                                    val isNotSelf = if (isEditing) log.startDate != currentLog?.startDate else true
+
+                                    // 겹침 조건: (새 시작일 <= 기존 종료일) AND (새 종료일 >= 기존 시작일)
+                                    isNotSelf && !newStart.isAfter(existingEnd) && !newEnd.isBefore(existingStart)
+                                }
+
+                                if (isOverlapping) {
+                                    // 💡 3. 겹치는 일정이 있으면 경고 띄우고 중단
+                                    Toast.makeText(context, "이미 해당 기간에 등록된 캠핑 일정이 있습니다!", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    // ✅ [수정 모드 케이스]
-                                    if (!isLocationChanged && currentLog?.nights == nights) {
-                                        // 장소도 안 바뀌고 숙박 일수도 그대로라면 그냥 종료
-                                        isEditing = false
-                                        locationInput = ""
-                                        selectedGearIds = emptySet()
-                                    } else {
-                                        // 💡 수정된 정보를 담은 로그 생성
-                                        val updatedLog = CampLog(
-                                            // 수정 시에는 기존 로그의 시작일을 유지하거나
-                                            // 현재 선택된 날을 새 시작일로 잡을 수 있습니다.
-                                            // 여기서는 기존 로그의 시작일을 유지하는 것이 안전합니다.
-                                            startDate = currentLog?.startDate ?: selectedDate.toString(),
+
+                                    // 💡 [핵심 체크] 장소나 다른 주요 정보가 바뀌었는지 확인
+                                    val isLocationChanged = currentLog?.location != locationInput
+                                    // (필요하다면 공개여부나 장비 리스트 변경 여부도 체크 가능)
+
+                                    if (!isEditing) {
+                                        // ✅ [신규 등록 케이스] 저장 후 바로 짐 싸기 화면으로!
+                                        val newLog = CampLog(
+                                            startDate = selectedDate.toString(), // 선택된 날이 시작일이 됨
                                             nights = nights,
                                             location = locationInput,
-                                            address = selectedSearchItem?.address ?: currentLog?.address ?: "",
-                                            mapx = selectedSearchItem?.mapx ?: currentLog?.mapx ?: "",
-                                            mapy = selectedSearchItem?.mapy ?: currentLog?.mapy ?: "",
+                                            address = selectedSearchItem?.address ?: "",
+                                            mapx = selectedSearchItem?.mapx ?: "",
+                                            mapy = selectedSearchItem?.mapy ?: "",
                                             isPublic = isPublic,
-                                            gearIds = selectedGearIds.toList(),
-                                            checkedGearIds = currentLog?.checkedGearIds ?: emptyList() // 체크 내역 보존
+                                            gearIds = selectedGearIds.toList()
                                         )
-
                                         val currentLogs = loadCampLogs(context).toMutableMap()
-
-                                        // 💡 기존 키가 현재와 다르다면(시작일이 바뀌었을 경우) 예전 키 삭제
-                                        if (currentLog != null && currentLog.startDate != updatedLog.startDate) {
-                                            currentLogs.remove(currentLog.startDate)
-                                        }
-
-                                        currentLogs[updatedLog.startDate] = updatedLog
+                                        currentLogs[newLog.startDate] = newLog
                                         saveCampLogs(context, currentLogs)
+                                        campLogs = currentLogs
 
-                                        campLogs = currentLogs // UI 즉시 갱신
+                                        // 입력창 초기화 및 이동
                                         locationInput = ""
                                         selectedGearIds = emptySet()
-                                        isEditing = false // 👈 수정 완료 후 카드 뷰로 복귀
-                                        Toast.makeText(context, "수정되었습니다.", Toast.LENGTH_SHORT)
-                                            .show()
+                                        onNavigateToLog(newLog.startDate)
+                                    } else {
+                                        // ✅ [수정 모드 케이스]
+                                        if (!isLocationChanged && currentLog?.nights == nights) {
+                                            // 장소도 안 바뀌고 숙박 일수도 그대로라면 그냥 종료
+                                            isEditing = false
+                                            locationInput = ""
+                                            selectedGearIds = emptySet()
+                                        } else {
+                                            // 💡 수정된 정보를 담은 로그 생성
+                                            val updatedLog = CampLog(
+                                                // 수정 시에는 기존 로그의 시작일을 유지하거나
+                                                // 현재 선택된 날을 새 시작일로 잡을 수 있습니다.
+                                                // 여기서는 기존 로그의 시작일을 유지하는 것이 안전합니다.
+                                                startDate = currentLog?.startDate
+                                                    ?: selectedDate.toString(),
+                                                nights = nights,
+                                                location = locationInput,
+                                                address = selectedSearchItem?.address
+                                                    ?: currentLog?.address ?: "",
+                                                mapx = selectedSearchItem?.mapx ?: currentLog?.mapx
+                                                ?: "",
+                                                mapy = selectedSearchItem?.mapy ?: currentLog?.mapy
+                                                ?: "",
+                                                isPublic = isPublic,
+                                                gearIds = selectedGearIds.toList(),
+                                                checkedGearIds = currentLog?.checkedGearIds
+                                                    ?: emptyList() // 체크 내역 보존
+                                            )
+
+                                            val currentLogs = loadCampLogs(context).toMutableMap()
+
+                                            // 💡 기존 키가 현재와 다르다면(시작일이 바뀌었을 경우) 예전 키 삭제
+                                            if (currentLog != null && currentLog.startDate != updatedLog.startDate) {
+                                                currentLogs.remove(currentLog.startDate)
+                                            }
+
+                                            currentLogs[updatedLog.startDate] = updatedLog
+                                            saveCampLogs(context, currentLogs)
+
+                                            campLogs = currentLogs // UI 즉시 갱신
+                                            locationInput = ""
+                                            selectedGearIds = emptySet()
+                                            isEditing = false // 👈 수정 완료 후 카드 뷰로 복귀
+                                            Toast.makeText(context, "수정되었습니다.", Toast.LENGTH_SHORT)
+                                                .show()
+                                        }
                                     }
                                 }
                             }
@@ -652,7 +703,11 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                                 isEditing = true
                             }
 
-                            Toast.makeText(context, "수정 모드입니다. 내용을 고친 후 다시 저장해주세요.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                "수정 모드입니다. 내용을 고친 후 다시 저장해주세요.",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     ) {
                         Text("기록 수정", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
@@ -681,7 +736,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     // 완료 여부에 따라 배경색을 다르게 줌 (완료 시 연한 초록)
-                    containerColor = if (isComplete) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                    containerColor = if (isComplete) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.primaryContainer.copy(
+                        alpha = 0.8f
+                    )
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -884,7 +941,8 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
                                                 // 3. 찾은 진짜 ID로 체크리스트 업데이트
                                                 val updatedChecked = log.checkedGearIds + originalId
-                                                val updatedLog = log.copy(checkedGearIds = updatedChecked)
+                                                val updatedLog =
+                                                    log.copy(checkedGearIds = updatedChecked)
 
                                                 val updatedLogs = campLogs.toMutableMap()
                                                 // 💡 중요: 키값을 log.startDate로 써야 11일, 12일 어디서 체크해도 11일 데이터가 바뀝니다.
@@ -927,7 +985,6 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         }
 
     }
-
 
 
     // 1️⃣ 그룹 선택 창 (메인 화면용)
@@ -1003,6 +1060,56 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 }
             }
         )
+    }
+
+    if (showDateRangePicker) {
+        // 💡 팝업이 열리는 '그 순간'의 selectedDate로 상태를 딱 한 번만 초기화합니다.
+        val dateRangePickerState = rememberDateRangePickerState(
+            initialSelectedStartDateMillis = selectedDate
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli(),
+            initialSelectedEndDateMillis = null // ✅ 종료일은 비워둬서 28일 방지!
+        )
+
+        DatePickerDialog(
+            onDismissRequest = { showDateRangePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val start = dateRangePickerState.selectedStartDateMillis
+                    val end = dateRangePickerState.selectedEndDateMillis
+
+                    if (start != null && end != null) {
+                        val startDate =
+                            Instant.ofEpochMilli(start).atZone(ZoneId.systemDefault()).toLocalDate()
+                        val endDate =
+                            Instant.ofEpochMilli(end).atZone(ZoneId.systemDefault()).toLocalDate()
+
+                        selectedDate = startDate
+                        nights =
+                            java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate).toInt()
+                    } else if (start != null) {
+                        // 종료일 안 찍고 확인 누르면 당일(0박) 처리
+                        selectedDate =
+                            Instant.ofEpochMilli(start).atZone(ZoneId.systemDefault()).toLocalDate()
+                        nights = 0
+                    }
+                    showDateRangePicker = false
+                }) { Text("확인") }
+            }
+        ) {
+            DateRangePicker(
+                state = dateRangePickerState,
+                title = { Text("캠핑 일정 선택", modifier = Modifier.padding(16.dp)) },
+                headline = {
+                    val text =
+                        if (dateRangePickerState.selectedEndDateMillis == null) "종료일을 선택하세요" else "일정이 선택되었습니다"
+                    Text(text, modifier = Modifier.padding(16.dp))
+                },
+                showModeToggle = false,
+                modifier = Modifier.fillMaxWidth().height(500.dp)
+            )
+        }
     }
 }
 

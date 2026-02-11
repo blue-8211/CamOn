@@ -720,7 +720,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isComplete) Color(0xFF2E7D32) else Color.DarkGray
                     )
-
+                    /*
                     if (totalGear == 0) {
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedButton(
@@ -738,7 +738,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("챙길 장비 선택하러 가기", fontSize = 13.sp)
                         }
-                    }
+                    }*/
                 }
             }
         }
@@ -775,30 +775,32 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     .thenBy { it.modelName } // 그 다음 모델명 가나다순
             )
 
-            if (remainingGear.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(16.dp))
-                // 헤더 영역: 제목 + 전체보기 버튼
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        "💡 잊으신 건 없나요?",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.Gray
-                    )
-                    // 💡 [추가] 전체 체크리스트로 이동하는 버튼 (여기서 짐 싸기 화면으로!)
-                    TextButton(
-                        onClick = { onNavigateToLog(log.startDate) },
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text("전체보기", fontSize = 12.sp)
-                        Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(16.dp))
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
+            // 1. 💡 헤더 영역: 어떤 상태든 "전체보기" 버튼은 항상 노출
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = if (remainingGear.isEmpty() && log.gearIds.isNotEmpty()) "🎉 모든 준비 완료!" else "💡 잊으신 건 없나요?",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (remainingGear.isEmpty()) Color(0xFF2E7D32) else Color.Gray
+                )
+                // 🚀 전체보기 버튼은 이제 무조건 보입니다.
+                TextButton(
+                    onClick = { onNavigateToLog(log.startDate) },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("전체보기", fontSize = 12.sp)
+                    Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(16.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (remainingGear.isNotEmpty()) {
                 Box(modifier = Modifier.heightIn(max = 300.dp)) {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth(),
@@ -912,7 +914,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         }
                     }
                 }
-
+                /*
                 if (remainingGear.size > 4) {
                     Text(
                         "외 ${remainingGear.size - 4}개의 장비가 더 있어요...",
@@ -920,16 +922,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         color = Color.Gray,
                         modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                     )
-                }
-            } else if (log.gearIds.isNotEmpty()) {
-                // 모든 짐을 다 쌌을 때 나오는 메시지
-                Spacer(modifier = Modifier.height(20.dp))
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("🎉 완벽합니다! 모든 장비를 다 챙기셨어요.", fontSize = 14.sp, color = Color(0xFF2E7D32))
-                }
+                }*/
             }
         }
 

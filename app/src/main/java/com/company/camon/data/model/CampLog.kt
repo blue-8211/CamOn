@@ -12,7 +12,8 @@ package com.company.camon.data.model
  * @param memo 간단한 메모나 후기 (추가하면 좋음)
  */
 data class CampLog(
-    val date: String,
+    val startDate: String,         // "2026-02-13" (출발일)
+    val nights: Int = 0,           // 0=당일, 1=1박, 2=2박 ...
     val location: String,
     val address: String = "",
     val mapx: String = "",

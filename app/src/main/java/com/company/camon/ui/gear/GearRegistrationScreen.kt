@@ -1,5 +1,6 @@
 package com.company.camon.ui.gear
 
+import android.R.attr.category
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
@@ -32,11 +33,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler // 👈 뒤로가기 제어를 위해 추가
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import com.company.camon.data.network.ShopItem
+import com.company.camon.data.network.naverApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,12 +51,20 @@ fun GearRegistrationScreen(context: Context) {
     val userGearList by gearDao.getAllUserGears().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
+    // 💡 1. 상태 변수들을 RegistrationFlow 밖으로 뺍니다.
+    var category by remember { mutableStateOf("") }
+    var brand by remember { mutableStateOf("") }
+    var modelName by remember { mutableStateOf("") }
+
     // 화면 상태 관리 (false: 목록, true: 등록 단계)
     var isRegistrationMode by remember { mutableStateOf(false) }
 
     if (isRegistrationMode) {
         RegistrationFlow(
             gearDao = gearDao, // 👈 배달 완료!
+            initialCategory = category,
+            initialBrand = brand,
+            initialModelName = modelName,
             onBack = { isRegistrationMode = false },
             onSave = { newGear ->
                 scope.launch {
@@ -65,7 +78,14 @@ fun GearRegistrationScreen(context: Context) {
         Scaffold(
             floatingActionButton = {
                 ExtendedFloatingActionButton(
-                    onClick = { isRegistrationMode = true },
+                    onClick = {
+                        // ✨ [핵심] 장비 추가 버튼을 누를 때 모든 상태를 초기화합니다!
+                        category = ""
+                        brand = ""
+                        modelName = ""
+
+                        isRegistrationMode = true
+                    },
                     icon = { Icon(Icons.Default.Add, null) },
                     text = { Text("장비 추가") },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -135,10 +155,18 @@ fun GearRegistrationScreen(context: Context) {
 @Composable
 fun RegistrationFlow(
     gearDao: GearDao, // 👈 여기 추가!
+    initialCategory: String,
+    initialBrand: String,
+    initialModelName: String,
     onBack: () -> Unit,
     onSave: (UserGear) -> Unit
     ) {
     var currentStep by remember { mutableIntStateOf(1) } // 1단계부터 시작
+
+    // 💡 부모로부터 받은 초기값으로 세팅
+    var category by remember { mutableStateOf(initialCategory) }
+    var brand by remember { mutableStateOf(initialBrand) }
+    var modelName by remember { mutableStateOf(initialModelName) }
 
     // 1. 뒤로가기 버그 해결 (35 -> 3으로 강제 지정)
     BackHandler {
@@ -150,9 +178,9 @@ fun RegistrationFlow(
     }
 
     // 사용자가 입력/선택 중인 데이터
-    var category by remember { mutableStateOf("") }
-    var brand by remember { mutableStateOf("") }
-    var modelName by remember { mutableStateOf("") }
+    //var category by remember { mutableStateOf("") }
+    //var brand by remember { mutableStateOf("") }
+    //var modelName by remember { mutableStateOf("") }
     var quantity by remember { mutableIntStateOf(1) }
     var isWinterOnly by remember { mutableStateOf(false) }
     var isFirewoodUse by remember { mutableStateOf(false) }
@@ -325,105 +353,129 @@ fun RegistrationFlow(
 
             // 3.5단계: 직접 입력 및 스토어 링크 (기획안 6번 핵심)
             35 -> {
-                var nameSuggestions by remember { mutableStateOf(listOf<String>()) }
                 var isSearching by remember { mutableStateOf(false) }
-                var hasError by remember { mutableStateOf(false) }
-
-                LaunchedEffect(linkUrl) {
-                    if (linkUrl.startsWith("http")) {
-                        isSearching = true
-                        hasError = false
-                        val results = extractProductNameFromUrl(linkUrl)
-
-                        if (results.isEmpty() || results.any { it.contains("오류") || it.contains("실패") }) {
-                            hasError = true
-                            nameSuggestions = emptyList()
-                        } else {
-                            nameSuggestions = results
-                            hasError = false
-                        }
-                        isSearching = false
-                    }
-                }
+                var shopResults by remember { mutableStateOf<List<ShopItem>>(emptyList()) }
+                val scope = rememberCoroutineScope()
 
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("모델 등록 ✍️", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("직접 입력하거나 아래 링크를 활용해 정보를 찾으세요.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    Text("모델명을 직접 쓰거나, 아래 조회를 통해 추천을 받으세요.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // 1. [상단] 모델명 입력창 (가장 중요하므로 위로!)
+                    // 1. [상단] 모델명 직접 입력창
                     OutlinedTextField(
                         value = modelName,
                         onValueChange = { modelName = it },
                         label = { Text("모델명") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { focusState ->
-                                // ✨ 입력창에 포커스가 잡히는(클릭하는) 순간 링크 초기화!
-                                if (focusState.isFocused) {
-                                    linkUrl = ""
-                                }
-                            },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        placeholder = { Text("예: 바랑에르돔 8-10") }
+                        placeholder = { Text("예: 노나돔 4.0") }
                     )
 
-                    // 2. 추천 키워드 (성공 시 노출)
-                    if (nameSuggestions.isNotEmpty() &&
-                        !nameSuggestions.any { it.contains("에러") || it.contains("보안") || it.contains("page") }) {
-                        Text("발견된 이름 추천:", modifier = Modifier.padding(top = 16.dp), style = MaterialTheme.typography.labelMedium)
-                        FlowRow(modifier = Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            nameSuggestions.forEach { suggestion ->
-                                SuggestionChip(
-                                    onClick = {
-                                        modelName = suggestion
-                                        linkUrl = "" // ✨ 링크 초기화
-                                        // 제안 목록도 더 이상 필요 없으니 비워줍니다.
-                                        nameSuggestions = emptyList()
-                                    },
-                                    label = { Text(suggestion) }
-                                )
+                    Spacer(modifier = Modifier.height(32.dp))
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 2. [하단] 네이버 쇼핑 정보 조회 도구
+                    Text("네이버 쇼핑 정보 조회", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 조회 버튼 (검색어는 현재 입력된 브랜드 + 모델명으로 자동 구성)
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isSearching = true
+                                try {
+                                    // 💡 [개선] 입력 상태에 따른 동적 쿼리 생성
+                                    val query = when {
+                                        // 1. 모델명까지 입력된 경우: 가장 정밀한 검색
+                                        modelName.isNotBlank() -> "$brand $category $modelName"
+
+                                        // 2. 모델명은 없고 브랜드/카테고리만 있는 경우: 후보군 탐색
+                                        brand.isNotBlank() && category.isNotBlank() -> "$brand $category"
+
+                                        // 3. 최소 정보만 있는 경우
+                                        else -> brand.ifBlank { category }
+                                    }
+
+                                    val response = naverApi.searchGear(
+                                        clientId = "8mtFAfTR89iqD77LO6us",
+                                        clientSecret = "Wn0CK0Ie0Q",
+                                        query = query
+                                    )
+                                    shopResults = response.items
+                                } catch (e: Exception) {
+                                    Log.e("NaverAPI", "조회 실패: ${e.message}")
+                                }
+                                isSearching = false
                             }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                    ) {
+                        if (isSearching) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("네이버에서 모델명 찾기")
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Divider(color = Color.LightGray.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(24.dp))
+                    // 3. 정제된 후보군 (FlowRow를 사용하여 칩 형태로 나열)
+                    if (shopResults.isNotEmpty()) {
+                        Text("발견된 모델명 후보 (선택 시 입력됨):", modifier = Modifier.padding(top = 20.dp), style = MaterialTheme.typography.labelMedium)
 
-                    // 3. [하단] 스토어 링크 보조 도구
-                    Text("정보 찾기 도구 (선택사항)", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(8.dp))
+                        // 💡 정제 로직: HTML 태그 제거 및 불필요한 수식어 필터링
+                        FlowRow(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            shopResults.take(6).forEach { item -> // 상위 6개만 후보로 노출
+                                var cleanName = item.title
+                                    .replace("<b>", "").replace("</b>", "")
+                                    .replace(Regex("\\[.*?\\]"), "") // [무료배송] 등 제거
+                                    .replace(Regex("\\(.*?\\)"), "") // (특가) 등 제거
 
-                    OutlinedTextField(
-                        value = linkUrl,
-                        onValueChange = { linkUrl = it },
-                        label = { Text("스토어 링크 붙여넣기") },
-                        modifier = Modifier.fillMaxWidth().height(60.dp),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        placeholder = { Text("링크를 넣으면 모델명을 추천해드려요") },
-                        trailingIcon = {
-                            if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                // 💡 2. 상품명에서 브랜드명(brand) 강제 제거
+                                // 예: "헬리녹스 노나돔" -> "노나돔"
+                                if (item.brand.isNotBlank()) {
+                                    cleanName = cleanName.replace(item.brand, "", ignoreCase = true)
+                                }
+                                // 💡 3. 혹은 사용자가 앞에서 이미 입력한 브랜드명도 제거 (혹시 모르니)
+                                if (brand.isNotBlank()) {
+                                    cleanName = cleanName.replace(brand, "", ignoreCase = true)
+                                }
+
+                                // 💡 4. 앞뒤 공백 및 중복 공백 정리
+                                cleanName = cleanName.trim().replace(Regex("\\s+"), " ")
+
+                                SuggestionChip(
+                                    onClick = {
+                                        modelName = cleanName
+                                        if (item.brand.isNotBlank()) brand = item.brand
+                                        shopResults = emptyList() // 선택 후 리스트 닫기
+                                    },
+                                    label = { Text(
+                                        text = cleanName,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    ) },
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
                         }
-                    )
-
-                    if (hasError) {
-                        Text("보안 정책상 이름을 가져오지 못했습니다. 직접 입력해주세요!",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp))
                     }
 
                     Spacer(modifier = Modifier.height(40.dp))
 
                     // 4. 다음 버튼
                     Button(
-                        onClick = {
-                            linkUrl = "" // ✨ 다음 단계로 갈 때도 링크 정보는 비우고 갑니다.
-                            currentStep = 4
-                        },
+                        onClick = { currentStep = 4 },
                         enabled = modelName.isNotBlank(),
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(12.dp)

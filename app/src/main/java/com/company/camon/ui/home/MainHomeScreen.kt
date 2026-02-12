@@ -406,7 +406,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         //val currentLog = campLogs[selectedDate.toString()]
 
@@ -759,6 +759,18 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    // 💡 1. 상단 보조 정보: 기간만 깔끔하게 노출
+                    val startDate = LocalDate.parse(currentLog.startDate)
+                    val endDate = startDate.plusDays(currentLog.nights.toLong())
+
+                    Text(
+                        text = "${startDate.monthValue}월 ${startDate.dayOfMonth}일 ~ ${endDate.monthValue}월 ${endDate.dayOfMonth}일 (${currentLog.nights}박)",
+                        fontSize = 12.sp,
+                        color = Color.Gray, // 💡 너무 튀지 않게 회색 처리
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(bottom = 2.dp, start = 4.dp) // 아이콘 위치와 정렬 맞춤
+                    )
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "📍 ${currentLog.location}",

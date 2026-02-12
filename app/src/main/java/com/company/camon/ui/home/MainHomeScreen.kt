@@ -39,6 +39,8 @@ import java.time.format.TextStyle
 import java.util.*
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.rememberDateRangePickerState
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.style.TextAlign
 import java.time.temporal.ChronoUnit
 import java.time.Instant
 import java.time.ZoneId
@@ -279,7 +281,9 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(20.dp)
+    ) {
         // 상단 인사말과 '오늘' 버튼을 한 줄에 배치
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -326,14 +330,16 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         WeeklyCalendar(
             selectedDate = selectedDate,
             hasLogDates = allActiveDates, // 💡 campLogs.keys 대신 전달!
-            listState = calendarListState // state 전달
-        ) { newDate -> // 💡 날짜가 선택되었을 때 실행되는 블록
-            selectedDate = newDate
-            isEditing = false // 👈 여기서 수정 모드를 해제합니다!
-            // 💡 [추가] 날짜를 옮기면 이전 날짜에서 작업하던 장비 리스트를 비웁니다.
-            selectedGearIds = emptySet()
-            locationInput = "" // 장소 입력값도 같이 비워주는 게 깔끔합니다.
-        }
+            campLogs = campLogs, // 💡 전체 맵 전달
+            listState = calendarListState, // state 전달
+            onDateSelected = { newDate -> // 💡 날짜가 선택되었을 때 실행되는 블록
+                selectedDate = newDate
+                isEditing = false // 👈 여기서 수정 모드를 해제합니다!
+                // 💡 [추가] 날짜를 옮기면 이전 날짜에서 작업하던 장비 리스트를 비웁니다.
+                selectedGearIds = emptySet()
+                locationInput = "" // 장소 입력값도 같이 비워주는 게 깔끔합니다.
+            }
+        )
         Spacer(modifier = Modifier.height(12.dp))
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -372,8 +378,10 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 
                 // 구분선
                 Box(
-                    modifier = Modifier.width(1.dp).height(30.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
+                    modifier = Modifier
+                        .width(1.5.dp) // 두께 살짝 보강
+                        .height(30.dp)
+                        .background(Color.LightGray) // 💡 outlineVariant보다 더 명확한 LightGray로 변경
                 )
 
                 // 풍속 정보
@@ -485,33 +493,42 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            // 💡 요소 간 간격을 아주 좁게(4dp) 설정하여 가로 공간 확보
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 "기간",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             // 당일, 1박, 2박 칩
                             listOf(0, 1, 2).forEach { n ->
                                 FilterChip(
                                     selected = nights == n,
                                     onClick = { nights = n },
-                                    label = { Text(if (n == 0) "당일" else "${n}박") },
-                                    modifier = Modifier.padding(end = 4.dp),
-                                    // 💡 Material3 칩 디자인을 위해 색상 살짝 추가 (선택사항)
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
+                                    label = { Text(
+                                        text = if (n == 0) "당일" else "${n}박",
+                                        fontSize = 12.sp, // 💡 글자 크기를 살짝 줄임
+                                        maxLines = 1      // 💡 절대 줄바꿈 금지
+                                    ) },
+                                    modifier = Modifier.height(32.dp)
                                 )
                             }
 
                             FilterChip(
                                 selected = nights >= 3,
                                 onClick = { showDateRangePicker = true }, // 💡 팝업 열기
-                                label = { Text(if (nights >= 3) "${nights}박" else "직접") }
+                                label = {
+                                    Text(
+                                        text = if (nights >= 3) "${nights}박" else "직접",
+                                        fontSize = 12.sp,
+                                        maxLines = 1 // 💡 글자가 잘려도 줄바꿈은 안 되게 설정
+                                    )
+                                },
+                                modifier = Modifier.height(32.dp)
                             )
                         }
 
@@ -1116,64 +1133,140 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
 @Composable
 fun WeeklyCalendar(
     selectedDate: LocalDate,
+    campLogs: Map<String, CampLog>,
     hasLogDates: Set<String>,
     listState: LazyListState,
     onDateSelected: (LocalDate) -> Unit
 ) {
-    // 💡 리스트 생성 시 오늘이 항상 0번째 인덱스가 되도록 조정 (선택 사항)
-    // 💡 [수정] 오늘 기준 과거 180일 ~ 미래 180일 (약 1년 범위) 생성
-    // 인덱스 180이 '오늘'이 됩니다.
-    val days = remember { (-180..180).map { LocalDate.now().plusDays(it.toLong()) } }
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val cellWidth = (screenWidth - 32.dp) / 5
 
-    LazyRow(
-        state = listState, // 💡 state 연결
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        items(days) { date ->
-            val isSelected = date == selectedDate
-            val hasLog = hasLogDates.contains(date.toString()) // 해당 날짜에 기록이 있는지 확인
+    val today = remember { LocalDate.now() }
 
-            Surface(
-                onClick = { onDateSelected(date) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .width(55.dp)
-                    .height(85.dp)
-            ) {
+    val days = remember {
+        (-180..180).map { today.plusDays(it.toLong()) }
+    }
+
+    // 날짜 → 로그 매핑 캐싱 (성능 개선)
+    val logByDate = remember(campLogs) {
+        buildMap<LocalDate, CampLog> {
+            campLogs.values.forEach { log ->
+                val start = LocalDate.parse(log.startDate)
+                val end = start.plusDays(log.nights.toLong())
+                var current = start
+                while (!current.isAfter(end)) {
+                    put(current, log)
+                    current = current.plusDays(1)
+                }
+            }
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        LazyRow(
+            state = listState,
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Transparent) // 💡 달력 전체 배경 투명하게
+                .padding(vertical = 4.dp) // 💡 상하 여백 축소
+        ) {
+            items(days) { date ->
+                val activeLog = logByDate[date]
+                val isSelected = date == selectedDate
+
+                val isStartDay = activeLog?.startDate == date.toString()
+                val isEndDay = activeLog?.let {
+                    val start = LocalDate.parse(it.startDate)
+                    start.plusDays(it.nights.toLong()) == date
+                } ?: false
+
                 Column(
+                    modifier = Modifier
+                        .width(cellWidth)
+                        .height(72.dp) // 💡 전체 높이 축소 (주인공성 하향)
+                        .background(Color.Transparent) // 💡 개별 셀의 흰색 박스 제거!
+                        .clickable { onDateSelected(date) }
+                        .padding(top = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    // 요일 표시 (월, 화, 수...)
-                    Text(
-                        text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.KOREAN),
-                        fontSize = 12.sp,
-                        color = if (isSelected) Color.White else Color.Gray
-                    )
-                    // 날짜 표시 (1, 2, 3...)
-                    Text(
-                        text = date.dayOfMonth.toString(),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) Color.White else Color.Black
-                    )
-                    // 💡 기록이 있는 날짜는 하단에 빨간 점 표시
-                    if (hasLog) {
+                    // 1 날짜 (선택 강조 원형)
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(
+                                color = if (isSelected) Color(0xFF6750A4) else Color.Transparent,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = date.dayOfMonth.toString(),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isSelected) Color.White else Color(0xFF444444) // 💡 텍스트 색상도 차분하게
+                        )
+                    }
+
+                    //  2 n박 칩 (첫날만 표시)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(20.dp), // 💡 높이를 18 -> 22로 늘려 상하 여백 확보
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        if (isStartDay == true && activeLog != null && activeLog.nights > 0) {
+                            Surface(
+                                color = Color(0xFFEADDFF).copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(4.dp) // 💡 곡률을 살짝 줄이면 글자가 덜 잘려 보임
+                            ) {
+                                Text(
+                                    text = "${activeLog.nights}박",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF6750A4),
+                                    modifier = Modifier.padding(
+                                        horizontal = 4.dp,
+                                        vertical = 0.5.dp
+                                    )/*,
+                                    textAlign = TextAlign.Center*/
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f)) // 💡 바를 맨 아래로 밀어냄
+
+                    // 3️ 일정 바 (두께 및 색상 강화)
+                    if (activeLog != null) {
                         Box(
                             modifier = Modifier
-                                .padding(top = 4.dp)
-                                .size(6.dp)
+                                .fillMaxWidth()
+                                .height(6.dp) // 💡 두께 강화 (4dp -> 6dp)
                                 .background(
-                                    color = if (isSelected) Color.White else Color.Red,
-                                    shape = CircleShape
+                                    // 💡 투명도를 높여(0.8f) 색상을 더 진하게 표현
+                                    color = Color(0xFF6750A4),
+                                    shape = RoundedCornerShape(
+                                        topStart = if (isStartDay) 2.dp else 0.dp,
+                                        bottomStart = if (isStartDay) 2.dp else 0.dp,
+                                        topEnd = if (isEndDay) 2.dp else 0.dp,
+                                        bottomEnd = if (isEndDay) 2.dp else 0.dp
+                                    )
                                 )
                         )
+                    } else {
+                        Spacer(modifier = Modifier.height(6.dp)) // 💡 높이 균형 유지
                     }
                 }
             }
         }
+        // 💡 달력 바로 아래에 아주 연한 구분선 추가
+        HorizontalDivider(
+            thickness = 0.8.dp,
+            color = Color.LightGray.copy(alpha = 0.2f),
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
     }
 }
 

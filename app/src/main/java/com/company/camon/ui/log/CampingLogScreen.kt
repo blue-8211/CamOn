@@ -319,7 +319,7 @@ fun CampingLogScreen(context: Context, date: String, onBack: () -> Unit) {
                             ) {
                                 Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color(0xFFFBC02D), modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("부탄가스, 휴지 등 소모품도 잊지 마세요! ", fontSize = 12.sp, color = Color.DarkGray)
+                                Text("휴지 등 소모품도 잊지 마세요! ", fontSize = 12.sp, color = Color.DarkGray)
                                 Text(
                                     text = "[+ 소모품 추가]",
                                     fontSize = 12.sp,

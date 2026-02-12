@@ -22,6 +22,9 @@ import com.company.camon.ui.home.MainHomeScreen
 import com.company.camon.ui.log.CampingLogScreen // 상세 화면 import 확인!
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import androidx.compose.runtime.LaunchedEffect
+import com.company.camon.data.db.CamonDatabase
+import com.company.camon.util.DatabaseInitializer
 
 // 1. 앱의 메인 진입점
 class MainActivity : ComponentActivity() {
@@ -46,6 +49,13 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 @Composable
 fun MainNavigationScreen() {
     val context = LocalContext.current
+
+    // 💡 [추가] 앱 시작 시 마스터 데이터 초기화 로직 실행 (2, 3, 8번 요구사항)
+    LaunchedEffect(Unit) {
+        val db = CamonDatabase.getDatabase(context)
+        val gearDao = db.gearDao()
+        DatabaseInitializer.initializeMasterData(context, gearDao)
+    }
 
     // 현재 선택된 하단 탭 상태
     var selectedScreen by remember { mutableStateOf<Screen>(Screen.Home) }

@@ -1,0 +1,136 @@
+[
+
+  { "category": "텐트", "brand": "헬리녹스", "modelName": "노나돔 4.0", "memo": "4인용 돔텐트" },
+  { "category": "텐트", "brand": "헬리녹스", "modelName": "택티컬 돔 2P", "memo": "2인용 텐트" },
+
+  { "category": "텐트", "brand": "스노우피크", "modelName": "랜드록", "memo": "패밀리 텐트" },
+  { "category": "텐트", "brand": "스노우피크", "modelName": "아메니티돔 M", "memo": "3~4인용 돔텐트" },
+  { "category": "텐트", "brand": "스노우피크", "modelName": "아메니티돔 L", "memo": "4~5인용 돔텐트" },
+  { "category": "텐트", "brand": "스노우피크", "modelName": "리빙쉘 롱", "memo": "쉘터형 텐트" },
+
+  { "category": "텐트", "brand": "노르디스크", "modelName": "아스가르드 7.1", "memo": "벨텐트" },
+  { "category": "텐트", "brand": "노르디스크", "modelName": "알페임 12.6", "memo": "면텐트" },
+
+  { "category": "텐트", "brand": "콜맨", "modelName": "터프스크린 2룸", "memo": "2룸형 텐트" },
+  { "category": "텐트", "brand": "콜맨", "modelName": "웨더마스터 4S", "memo": "4인용 텐트" },
+
+
+
+  { "category": "타프", "brand": "스노우피크", "modelName": "HD 타프 실드 헥사", "memo": "헥사형 타프" },
+  { "category": "타프", "brand": "노르디스크", "modelName": "카리 20", "memo": "렉타형 타프" },
+  { "category": "타프", "brand": "노르디스크", "modelName": "카리 다이아몬드 10", "memo": "다이아몬드형 타프" },
+
+
+
+  { "category": "테이블", "brand": "스노우피크", "modelName": "IGT 프레임", "memo": "아이언그릴테이블 기본 프레임" },
+  { "category": "테이블", "brand": "스노우피크", "modelName": "엔트리 IGT", "memo": "입문용 IGT 세트" },
+
+  { "category": "테이블", "brand": "카고컨테이너", "modelName": "IGT 프레임", "memo": "IGT 호환 프레임" },
+
+  { "category": "테이블", "brand": "몬테라", "modelName": "IGT 테이블", "memo": "IGT 호환 시스템" },
+
+
+
+  { "category": "체어", "brand": "헬리녹스", "modelName": "체어원", "memo": "경량 체어" },
+  { "category": "체어", "brand": "헬리녹스", "modelName": "체어투", "memo": "하이백 체어" },
+  { "category": "체어", "brand": "헬리녹스", "modelName": "택티컬 체어", "memo": "전술 체어" },
+
+  { "category": "체어", "brand": "스노우피크", "modelName": "로우체어 30", "memo": "우드 암레스트 체어" },
+
+
+
+  { "category": "조명", "brand": "크레모아", "modelName": "울트라3.0 L", "memo": "캠핑 LED 랜턴" },
+  { "category": "조명", "brand": "골제로", "modelName": "라이트하우스 마이크로", "memo": "소형 랜턴" },
+
+
+
+  { "category": "취사", "brand": "스노우피크", "modelName": "플랫버너", "memo": "IGT 전용 버너" },
+  { "category": "취사", "brand": "콜맨", "modelName": "파워하우스 투버너", "memo": "2구 가스버너" },
+
+
+
+
+
+  { "category": "도구", "brand": "[설치]", "modelName": "망치", "memo": "무반동 망치" },
+
+
+  { "category": "도구", "brand": "[설치]", "modelName": "팩", "memo": "스틸팩/알루팩" },
+  { "category": "도구", "brand": "[설치]", "modelName": "팩가방", "memo": "팩 보관용" },
+  { "category": "도구", "brand": "[설치]", "modelName": "스트링", "memo": "텐트 고정용" },
+  { "category": "도구", "brand": "[설치]", "modelName": "카라비너", "memo": "다용도 걸이" },
+
+  { "category": "도구", "brand": "[정리]", "modelName": "멀티툴", "memo": "플라이어 포함" },
+  { "category": "도구", "brand": "[정리]", "modelName": "드라이버 세트", "memo": "간단 수리용" },
+  { "category": "도구", "brand": "[정리]", "modelName": "니퍼", "memo": "스트링 컷팅" },
+  { "category": "도구", "brand": "[정리]", "modelName": "망치고리", "memo": "해머 고정용" },
+  { "category": "도구", "brand": "[정리]", "modelName": "폴대가방", "memo": "폴대 수납용" },
+
+  { "category": "도구", "brand": "[주방]", "modelName": "칼", "memo": "조리용" },
+  { "category": "도구", "brand": "[주방]", "modelName": "도마", "memo": "접이식 가능" },
+  { "category": "도구", "brand": "[주방]", "modelName": "집게", "memo": "고기집게" },
+  { "category": "도구", "brand": "[주방]", "modelName": "국자", "memo": "조리용" },
+  { "category": "도구", "brand": "[주방]", "modelName": "가위", "memo": "식재료 컷팅" },
+  { "category": "도구", "brand": "[주방]", "modelName": "수저세트", "memo": "개인용 식기" },
+  { "category": "도구", "brand": "[주방]", "modelName": "코펠", "memo": "냄비 세트" },
+  { "category": "도구", "brand": "[주방]", "modelName": "프라이팬", "memo": "캠핑용" },
+
+  { "category": "도구", "brand": "[전기]", "modelName": "릴선", "memo": "전기 연장선" },
+  { "category": "도구", "brand": "[전기]", "modelName": "멀티탭", "memo": "캠핑용 방수형" },
+  { "category": "도구", "brand": "[전기]", "modelName": "랜턴걸이", "memo": "조명 고정용" },
+
+  { "category": "도구", "brand": "[청소]", "modelName": "빗자루", "memo": "바닥 정리" },
+  { "category": "도구", "brand": "[청소]", "modelName": "쓰레기걸이", "memo": "봉투 거치대" },
+  { "category": "도구", "brand": "[청소]", "modelName": "물통", "memo": "워터저그" },
+
+  { "category": "도구", "brand": "[안전]", "modelName": "소화기", "memo": "차량/사이트용" },
+  { "category": "도구", "brand": "[안전]", "modelName": "구급함", "memo": "응급처치 키트" },
+  { "category": "도구", "brand": "[안전]", "modelName": "가스토치", "memo": "점화용" },
+
+
+
+  { "category": "소모품", "brand": "", "modelName": "부탄가스", "memo": "버너용 가스" },
+  { "category": "소모품", "brand": "", "modelName": "이소가스", "memo": "동계용 가스" },
+  { "category": "소모품", "brand": "", "modelName": "숯", "memo": "바베큐용" },
+  { "category": "소모품", "brand": "", "modelName": "장작", "memo": "화목난로용" },
+  { "category": "소모품", "brand": "", "modelName": "착화제", "memo": "숯 점화용" },
+
+  { "category": "소모품", "brand": "", "modelName": "건전지 AA", "memo": "랜턴용" },
+  { "category": "소모품", "brand": "", "modelName": "건전지 AAA", "memo": "소형기기용" },
+  { "category": "소모품", "brand": "", "modelName": "보조배터리 충전케이블", "memo": "USB-C 포함" },
+
+  { "category": "소모품", "brand": "", "modelName": "물티슈", "memo": "위생용" },
+  { "category": "소모품", "brand": "", "modelName": "휴지", "memo": "두루마리 휴지" },
+  { "category": "소모품", "brand": "", "modelName": "키친타월", "memo": "조리용" },
+  { "category": "소모품", "brand": "", "modelName": "종이컵", "memo": "일회용" },
+  { "category": "소모품", "brand": "", "modelName": "종이접시", "memo": "일회용" },
+
+  { "category": "소모품", "brand": "", "modelName": "비닐봉투", "memo": "쓰레기용" },
+  { "category": "소모품", "brand": "", "modelName": "쓰레기봉투", "memo": "분리수거용" },
+  { "category": "소모품", "brand": "", "modelName": "지퍼백", "memo": "식재료 보관" },
+  { "category": "소모품", "brand": "", "modelName": "랩", "memo": "식재료 보관" },
+
+  { "category": "소모품", "brand": "", "modelName": "세제", "memo": "설거지용" },
+  { "category": "소모품", "brand": "", "modelName": "수세미", "memo": "설거지용" },
+  { "category": "소모품", "brand": "", "modelName": "고무장갑", "memo": "설거지용" },
+
+  { "category": "소모품", "brand": "", "modelName": "모기향", "memo": "해충 방지" },
+  { "category": "소모품", "brand": "", "modelName": "모기기피제", "memo": "스프레이형" },
+  { "category": "소모품", "brand": "", "modelName": "벌레퇴치 패치", "memo": "아동용 가능" },
+
+  { "category": "소모품", "brand": "", "modelName": "생수", "memo": "식수용" },
+  { "category": "소모품", "brand": "", "modelName": "음료수", "memo": "캔/페트" },
+  { "category": "소모품", "brand": "", "modelName": "맥주", "memo": "캔맥주" },
+
+  { "category": "소모품", "brand": "", "modelName": "고기", "memo": "바베큐용" },
+  { "category": "소모품", "brand": "", "modelName": "채소", "memo": "상추/쌈채소" },
+  { "category": "소모품", "brand": "", "modelName": "쌀", "memo": "취사용" },
+  { "category": "소모품", "brand": "", "modelName": "라면", "memo": "간편식" },
+
+  { "category": "소모품", "brand": "", "modelName": "소금", "memo": "조리용" },
+  { "category": "소모품", "brand": "", "modelName": "식용유", "memo": "조리용" },
+  { "category": "소모품", "brand": "", "modelName": "양념", "memo": "기본 양념 세트" },
+
+
+  { "category": "기타", "brand": "", "modelName": "파워뱅크", "memo": "대용량 배터리" },
+  { "category": "기타", "brand": "", "modelName": "아이스박스", "memo": "쿨러" }
+]

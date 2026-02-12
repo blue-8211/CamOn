@@ -55,4 +55,12 @@ interface GearDao {
     // 💡 특정 카테고리의 모든 마스터 기어 가져오기 (Suspend 버전 - 일회성 조회용)
     @Query("SELECT * FROM master_gear WHERE category = :category")
     suspend fun getMasterGearsByCategoryOnce(category: String): List<MasterGear>
+
+    // 💡 JSON에서 읽어온 리스트를 한 번에 붓기 위해 List 타입을 받습니다.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMasterGears(gears: List<MasterGear>)
+
+    // 💡 3번 요구사항(업데이트 시 리셋)을 위해 테이블을 깨끗이 비웁니다.
+    @Query("DELETE FROM master_gear")
+    suspend fun deleteAllMasterGears()
 }

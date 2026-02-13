@@ -33,8 +33,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler // 👈 뒤로가기 제어를 위해 추가
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,58 +96,59 @@ fun GearRegistrationScreen(context: Context) {
                 )
             }
         ) { padding ->
+            // 💡 1. 장비를 카테고리별로 그룹화합니다.
+            val groupedGears = remember(userGearList) {
+                userGearList.groupBy { it.category }
+            }
+
+            // 💡 2. 각 카테고리의 접기/펴기 상태를 관리하는 Map (기본값: 모두 펼침)
+            val expandedStates = remember {
+                mutableStateMapOf<String, Boolean>()
+            }
+
+            // 초기 상태 설정
+            LaunchedEffect(groupedGears.keys) {
+                groupedGears.keys.forEach { if (!expandedStates.containsKey(it)) expandedStates[it] = true }
+            }
+
             LazyColumn(
                 modifier = Modifier.padding(padding).fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp) // 카드 사이 간격
+                verticalArrangement = Arrangement.spacedBy(8.dp) // 카드 사이 간격
             ) {
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-
-                            Text(
-                                "내 창고 📦",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "총 ${userGearList.size}개의 장비가 보관 중입니다.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray
-                            )
-                        }
-
-                        // 💡 [추가] 5번 요구사항: Debug 전용 리셋 버튼 (개발 중에만 사용)
-                        // 실제 배포 시에는 이 버튼을 숨기거나 특정 동작(7번 클릭 등)으로 활성화하면 좋습니다.
-                        IconButton(onClick = {
-                            scope.launch {
-                                // 💡 [수정] DatabaseInitializer의 로직을 강제 호출하여 리셋
-                                // (이 부분은 DatabaseInitializer 파일 작업 후 연결)
-                                Toast.makeText(context, "데이터 재동기화 중...", Toast.LENGTH_SHORT).show()
-                            }
-                        }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Debug Reset", tint = Color.LightGray)
-                        }
-                    }
+                    // 상단 타이틀 섹션 (기존 코드 유지)
+                    GearWarehouseHeader(totalCount = userGearList.size, onReset = { /* 리셋로직 */ })
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 if (userGearList.isEmpty()) {
-                    item {
-                        Box(modifier = Modifier.fillParentMaxHeight(0.7f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Text("등록된 장비가 없습니다.\n첫 번째 장비를 등록해보세요!", textAlign = TextAlign.Center, color = Color.LightGray)
+                    item { EmptyWarehouseView() }
+                }else {
+                    // 💡 3. 그룹화된 데이터를 기반으로 리스트 생성
+                    groupedGears.forEach { (category, gears) ->
+                        val isExpanded = expandedStates[category] ?: true
+
+                        // [카테고리 헤더]
+                        item {
+                            CategoryHeader(
+                                category = category,
+                                count = gears.size,
+                                isExpanded = isExpanded,
+                                onToggle = { expandedStates[category] = !isExpanded }
+                            )
                         }
-                    }
-                } else {
-                    items(userGearList) { gear ->
-                        GearItemCard(
-                            gear = gear,
-                            onDelete = { scope.launch { gearDao.deleteUserGear(gear) } }
-                        )
+
+                        // [카테고리 내부 아이템들]
+                        if (isExpanded) {
+                            items(gears) { gear ->
+                                // 기존 GearItemCard를 그대로 쓰되, 수량이 돋보이게 수정된 버전을 사용
+                                GearItemCard(
+                                    gear = gear,
+                                    onDelete = { scope.launch { gearDao.deleteUserGear(gear) } }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -602,67 +606,149 @@ suspend fun extractProductNameFromUrl(url: String): List<String> {
     }
 }
 
-// --- [디자인 리뉴얼] 목록 화면 아이템 카드 ---
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GearItemCard(gear: UserGear, onDelete: () -> Unit) {
-    val emoji = when(gear.category) {
-        "텐트" -> "⛺"
-        "체어" -> "💺"
-        "테이블" -> "🪑"
-        "조명" -> "💡"
-        "타프" -> "⛱️"
-        "취사" -> "🍳"
-        else -> "🛠️"
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp)
+fun CategoryHeader(category: String, count: Int, isExpanded: Boolean, onToggle: () -> Unit) {
+    Surface(
+        onClick = onToggle,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(16.dp, 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 카테고리 아이콘
-            Surface(
-                modifier = Modifier.size(48.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(emoji, fontSize = 24.sp)
-                }
+            val emoji = when(category) {
+                "텐트" -> "⛺" "체어" -> "💺" "테이블" -> "🪑"
+                "조명" -> "💡" "타프" -> "⛱️" "취사" -> "🍳" else -> "🛠️"
             }
+            Text("$emoji $category", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(" $count", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.weight(1f))
 
-            // 장비 정보
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = Color.Gray
+            )
+        }
+    }
+}
+
+// 💡 기존 GearItemCard를 조금 더 컴팩트하고 수량이 잘 보이게 다듬은 버전입니다.
+@Composable
+fun GearItemCard(gear: UserGear, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(0.5.dp, Color.LightGray.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp), // 상하 패딩을 줄여 높이 축소
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 1. 브랜드 & 모델명 (왼쪽 정렬)
             Column(modifier = Modifier.weight(1f)) {
-                Text(gear.brand, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text(gear.modelName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                if (gear.memo.isNotBlank()) {
-                    Text(gear.memo, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (gear.brand.isNotBlank()) {
+                    Text(
+                        text = gear.brand,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1
+                    )
                 }
-            }
-
-            // 수량 표시
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(8.dp)
-            ) {
                 Text(
-                    "x${gear.quantity}",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
+                    text = gear.modelName,
+                    style = MaterialTheme.typography.bodyMedium, // 폰트 크기 살짝 조정
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, "삭제", tint = Color.LightGray)
+            // 2. 수량 표시 (중간)
+            if (gear.quantity > 1) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "x${gear.quantity}",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+
+            // 3. 삭제 버튼 (오른쪽 끝)
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "삭제",
+                    tint = Color.LightGray.copy(alpha = 0.8f),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
+    }
+}
+
+@Composable
+fun GearWarehouseHeader(totalCount: Int, onReset: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(
+                "내 창고 📦",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "총 ${totalCount}개의 장비가 보관 중입니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+        }
+
+        // 디버그 리셋 버튼
+        IconButton(onClick = onReset) {
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "Debug Reset",
+                tint = Color.LightGray
+            )
+        }
+    }
+}
+
+@Composable
+fun EmptyWarehouseView() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(300.dp), // 적절한 높이 조절
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "등록된 장비가 없습니다.\n첫 번째 장비를 등록해보세요!",
+            textAlign = TextAlign.Center,
+            color = Color.LightGray
+        )
     }
 }

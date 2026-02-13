@@ -47,9 +47,15 @@ import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class) // 💡 이 줄을 추가하세요!
 @Composable
-fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherApi: WeatherApiService) {
+fun MainHomeScreen(
+    context: Context,
+    initialDate: LocalDate, // 👈 외부에서 날짜를 받습니다.
+    onNavigateToLog: (String) -> Unit,
+    weatherApi: WeatherApiService
+) {
     // --- 1. 상태 관리 변수들 ---
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) } // 선택된 날짜
+    //var selectedDate by remember { mutableStateOf(LocalDate.now()) } // 선택된 날짜
+    var selectedDate by remember(initialDate) { mutableStateOf(initialDate) }
     var locationInput by remember { mutableStateOf("") } // 캠핑장 검색어 입력값
     var isPublic by remember { mutableStateOf(false) } // 공개/비공개 스위치
     var campLogs by remember { mutableStateOf(loadCampLogs(context)) } // 전체 캠핑 로그 데이터
@@ -263,11 +269,14 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         response.list.filter { it.dt_txt.startsWith(selectedDate.toString()) }
 
                     if (dailyData.isNotEmpty()) {
-                        tempMax =
-                            (dailyData.maxOfOrNull { it.main.temp_max } ?: 0.0).toInt().toString()
-                        tempMin =
-                            (dailyData.minOfOrNull { it.main.temp_min } ?: 0.0).toInt().toString()
-                        windMax = (dailyData.maxOfOrNull { it.wind.speed } ?: 0.0).toString()
+                        val maxW = dailyData.maxOfOrNull { it.wind.speed } ?: 0.0
+                        val avgT = dailyData.map { it.main.temp }.average() // 평균 기온
+                        val mainW = dailyData.firstOrNull()?.weather?.firstOrNull()?.main ?: ""
+
+                        // 💡 UI 업데이트 (기존 로직)
+                        tempMax = (dailyData.maxOfOrNull { it.main.temp_max } ?: 0.0).toInt().toString()
+                        tempMin = (dailyData.minOfOrNull { it.main.temp_min } ?: 0.0).toInt().toString()
+                        windMax = maxW.toString()
                     } else {
                         tempMax = "-"; tempMin = "-"; windMax = "-"; windMin = "-"
                     }
@@ -340,73 +349,49 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 locationInput = "" // 장소 입력값도 같이 비워주는 게 깔끔합니다.
             }
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant
-            )
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), // 외부 여백 축소
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+            ),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp), // 내부 패딩 축소
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 기온 정보
+                // 왼쪽: 기온 정보
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Thermostat,
-                        contentDescription = null,
-                        tint = Color(0xFFFF5722), // 주황색 계열
-                        modifier = Modifier.size(24.dp)
+                    Text("🌡️", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${tempMax}° / ${tempMin}°",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text("기온 (최고/최저)", fontSize = 12.sp, color = Color.Gray)
-                        Text(
-                            text = if (tempMax == "-") "-" else "${tempMax}° / ${tempMin}°",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = if (tempMax != "-") Color(0xFFFF5252) else Color.Black // 최고기온 빨간색 포인트
-                        )
-                    }
                 }
 
-                // 구분선
-                Box(
-                    modifier = Modifier
-                        .width(1.5.dp) // 두께 살짝 보강
-                        .height(30.dp)
-                        .background(Color.LightGray) // 💡 outlineVariant보다 더 명확한 LightGray로 변경
-                )
+                // 중앙: 구분선 (선택 사항)
+                Box(modifier = Modifier.width(1.dp).height(12.dp).background(Color.Gray.copy(alpha = 0.3f)))
 
-                // 풍속 정보
+                // 오른쪽: 풍속 정보
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Air,
-                        contentDescription = null,
-                        tint = Color(0xFF2196F3), // 파란색 계열
-                        modifier = Modifier.size(24.dp)
+                    Text("🌬️", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${windMax} m/s",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text("풍속 (최대)", fontSize = 12.sp, color = Color.Gray)
-                        Text(
-                            text = if (windMax == "-") "-" else "${windMax} m/s",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = if (windMax != "-" && windMax.toDouble() > 7.0) Color.Red else Color.Black // 강풍 주의 표시
-                        )
-                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         //val currentLog = campLogs[selectedDate.toString()]
 
@@ -689,7 +674,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         } else {
             // 제목과 수정 버튼을 한 줄에 배치
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), // 수직 패딩 최소화
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -738,7 +723,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            //Spacer(modifier = Modifier.height(2.dp))
 
             // 데이터 계산 (전체 대비 체크된 비율)
             val totalGear = currentLog.gearIds.size
@@ -758,7 +743,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     )
                 )
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { // vertical 16 -> 8
                     // 💡 1. 상단 보조 정보: 기간만 깔끔하게 노출
                     val startDate = LocalDate.parse(currentLog.startDate)
                     val endDate = startDate.plusDays(currentLog.nights.toLong())
@@ -798,7 +783,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                         trackColor = Color.White.copy(alpha = 0.5f)
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    //Spacer(modifier = Modifier.height(4.dp))
 
                     // 상태 요약 텍스트
                     Text(
@@ -830,6 +815,51 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
         }
         // --- [진행률 카드 바로 아래에 추가] ---
         currentLog?.let { log ->
+            // 💡 1. 날씨 가이드 메시지 생성 로직 (현재 홈 화면에 있는 windMax, tempMin 활용)
+            val packingAdvice = remember(windMax, tempMin, currentLog) {
+                val wind = windMax.toDoubleOrNull() ?: 0.0
+                val temp = tempMin.toDoubleOrNull() ?: 20.0
+                val hasTentOrTarp = currentLog?.gearIds?.any { id ->
+                    // 카테고리가 텐트나 타프인 장비가 체크리스트에 있는지 확인
+                    allGear.find { it.id.toString() == id }?.let { it.category == "텐트" || it.category == "타프" } ?: false
+                } ?: false
+
+                when {
+                    wind >= 7.0 && hasTentOrTarp -> "🚩 강풍 주의: 오늘 바람이 셉니다! 단조팩과 스트링을 넉넉히 챙기세요."
+                    temp <= 5.0 -> "❄️ 추위 대비: 기온이 낮습니다. 난로와 등유, 핫팩을 잊지 마세요!"
+                    wind >= 5.0 -> "🍃 약간의 바람: 타프 설치 시 가이드 로프를 튼튼히 당겨주세요."
+                    else -> null
+                }
+            }
+
+            // 💡 2. 가이드 UI 노출
+            packingAdvice?.let { msg ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 0.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)), // 포스트잇 노란색
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lightbulb,
+                            contentDescription = null,
+                            tint = Color(0xFFFBC02D),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF5D4037)
+                        )
+                    }
+                }
+            }
+
             // 1. 체크 안 된 장비들의 'ID 문자열'만 먼저 추출
             val remainingGearIds = log.gearIds.filter { id ->
                 !log.checkedGearIds.contains(id)
@@ -861,7 +891,7 @@ fun MainHomeScreen(context: Context, onNavigateToLog: (String) -> Unit, weatherA
                     .thenBy { it.modelName } // 그 다음 모델명 가나다순
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // 1. 💡 헤더 영역: 어떤 상태든 "전체보기" 버튼은 항상 노출
             Row(

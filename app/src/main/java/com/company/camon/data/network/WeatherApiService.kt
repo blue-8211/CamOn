@@ -38,6 +38,7 @@ data class ForecastItem(
     val dt: Long,             // Unix 타임스탬프
     val main: MainData,       // temp_max, temp_min 포함
     val wind: WindData,       // speed 포함
+    val weather: List<WeatherDescription>, // 💡 추가: 날씨 상태 리스트
     val dt_txt: String        // "2026-02-05 12:00:00" 형태
 )
 
@@ -50,4 +51,11 @@ data class MainData(
 
 data class WindData(
     val speed: Double
+)
+
+// 💡 추가: 날씨 상태 상세 정보를 담는 클래스
+data class WeatherDescription(
+    val main: String, // 예: "Rain", "Clouds", "Clear"
+    val description: String,
+    val icon: String
 )

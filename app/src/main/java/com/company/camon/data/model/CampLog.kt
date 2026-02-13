@@ -21,5 +21,10 @@ data class CampLog(
     val isPublic: Boolean = false,
     val gearIds: List<String> = emptyList(), // 장비 연결 고리
     val checkedGearIds: List<String> = emptyList(), // 💡 추가: 체크된 장비 ID 리스트
-    val memo: String = ""
+    val memo: String = "",
+    // 💡 [Step 3 추가 필드]
+    val rating: Int = 5,
+    val mood: String = "😄",
+    val weatherDesc: String = "☀️",
+    val note: String = ""
 )
